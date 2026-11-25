@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=9
+VERSION=10
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -108,6 +108,14 @@ led_set() { # lado r g b brillo
   done
 }
 
+# Luces de los sticks: las aplica el sistema de AYN al cambiar estos ajustes
+lights_set() { # encendido colorIzq colorDer brillo%
+  if [ "$1" = 0 ]; then settings put system joystick_light_enabled "0,0"; return; fi
+  settings put system joystick_led_light_picker_color "#ff$2,#ff$3"
+  settings put system led_light_brightness_percent "$(awk "BEGIN{printf \"%.2f\", $4/100}")"
+  settings put system joystick_light_enabled "1,1"
+}
+
 FXP=""
 fx_stop() { [ -n "$FXP" ] && kill "$FXP" 2>/dev/null; FXP=""; }
 
@@ -158,6 +166,9 @@ telemetry() {
     done
     echo "leds=$(ls /sys/class/leds 2>/dev/null | tr '\n' ',')"
     echo "stock=$(pidof $STOCK)"
+    for k in fan_mode performance_mode is_charging_separation force_landscape screen_focus_lock enable_system_key_focus_lock joystick_light_enabled joystick_led_light_picker_color led_light_brightness_percent dual_screen_brightness_level keep_screen_on; do
+      echo "ayn_$k=$(settings get system $k 2>/dev/null)"
+    done
   } > "$D/tele.tmp"
   mv "$D/tele.tmp" "$D/tele.txt"
   own "$D/tele.txt"
@@ -266,17 +277,30 @@ run() {
     led)
       case "$a" in l|r|all) ;; *) return;; esac
       num "$b" && num "$c" && num "$d" && num "$e" && { fx_stop; led_set "$a" "$b" "$c" "$d" "$e"; };;
+    ayn)
+      case "$a" in
+        fan_mode|performance_mode|is_charging_separation|force_landscape|keep_screen_on|joystick_light_enabled|joystick_led_light_picker_color|led_light_brightness_percent|dual_screen_brightness_level|secondary_screen_volume_level|screen_focus_lock|enable_system_key_focus_lock|vibrate_strength_value|flip_button_layout|charging_limit_power_limit) ;;
+        *) return;;
+      esac
+      case "$b" in ''|*[!A-Za-z0-9_.,#-]*) return;; esac
+      [ "$a" = force_landscape ] && [ "$b" = 0 ] && wm set-ignore-orientation-request false >/dev/null 2>&1
+      settings put system "$a" "$b";;
+    lights)
+      # lights encendido(1/0) colorIzq colorDer brillo(0-100)  · colores RRGGBB
+      case "$b$c" in *[!0-9A-Fa-f]*) return;; esac
+      num "$a" && num "$d" || return
+      fx_stop; lights_set "$a" "$b" "$c" "$d";;
     fxb)
-      num "$a" && num "$b" && num "$c" && num "$d" || return
+      num "$b" || return
+      case "$a" in *[!0-9A-Fa-f]*|'') return;; esac
       fx_stop
-      ( while true; do for k in 10 25 45 70 100 135 175 215 255 215 175 135 100 70 45 25; do
-          led_set all "$a" "$b" "$c" $(( k * d / 255 )); sleep 0.09; done; done ) &
+      ( while true; do for k in 15 35 60 85 100 85 60 35; do lights_set 1 "$a" "$a" $(( k * b / 100 )); sleep 0.25; done; done ) &
       FXP=$!;;
     fxr)
       num "$a" || return
       fx_stop
-      ( while true; do for col in "255 0 0" "255 110 0" "255 220 0" "90 255 0" "0 255 160" "0 160 255" "60 0 255" "200 0 255" "255 0 140"; do
-          set -- $col; led_set all "$1" "$2" "$3" "$a"; sleep 0.25; done; done ) &
+      ( while true; do for col in FF0000 FF6E00 FFDC00 5AFF00 00FFA0 00A0FF 3C00FF C800FF FF008C; do
+          lights_set 1 $col $col "$a"; sleep 0.4; done; done ) &
       FXP=$!;;
     fxoff) fx_stop;;
     diag) diag;;
@@ -322,16 +346,17 @@ KW=$!
 miss=0
 n=0
 while true; do
-  if pidof $PKG >/dev/null 2>&1; then miss=0; else miss=$((miss+1)); fi
-  [ $miss -ge 20 ] && cleanup
-  keep_frozen
+  if [ $((n % 7)) -eq 0 ]; then
+    if pidof $PKG >/dev/null 2>&1; then miss=0; else miss=$((miss+1)); fi
+    [ $miss -ge 20 ] && cleanup
+    keep_frozen
+  fi
   for f in "$D"/cmd_*; do
     [ -f "$f" ] || continue
     while read -r c1 c2 c3 c4 c5 c6; do run "$c1" "$c2" "$c3" "$c4" "$c5" "$c6"; done < "$f"
     rm -f "$f"
   done
-  [ $((n % 2)) -eq 0 ] && telemetry
-  [ $((n % 60)) -eq 1 ] && diag
+  [ $((n % 7)) -eq 0 ] && telemetry
   n=$((n+1))
-  sleep 0.5
+  sleep 0.15
 done

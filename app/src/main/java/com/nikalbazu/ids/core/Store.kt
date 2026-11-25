@@ -100,6 +100,8 @@ data class Tele(
     val backlights: List<String> = emptyList(),
     /** Brillo real de cada pantalla en % (leído del sistema). */
     val blPct: Map<String, Int> = emptyMap(),
+    /** Ajustes de AYN tal como están ahora en la consola. */
+    val ayn: Map<String, String> = emptyMap(),
     val leds: List<String> = emptyList(),
     val helperAlive: Boolean = false,
     val maxTodayC: Float = 0f,

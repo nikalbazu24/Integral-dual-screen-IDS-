@@ -16,7 +16,7 @@ object Helper {
     private lateinit var ctx: Context
     private var lastLaunch = 0L
     var method: String = "ninguno"; private set
-    private const val VERSION = "9"
+    private const val VERSION = "10"
     /** Todo lo que toca archivos va en segundo plano para que el panel nunca se trabe. */
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "ids-helper").apply { isDaemon = true } }
 

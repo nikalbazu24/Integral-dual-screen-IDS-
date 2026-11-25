@@ -188,7 +188,7 @@ private fun Setup() {
                     }
                     T("Al compartir se abre GitHub con todo rellenado: solo toca “Submit new issue”. Se revisa, se agrega a la app y le llega a todos en la siguiente versión.",
                         15.sp, FontWeight.Bold, t.mu, maxLines = 3)
-                    (Device.STOCK_BUTTONS + "Force landscape").forEach { name ->
+                    Device.STOCK_BUTTONS.forEach { name ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             val community by com.nikalbazu.ids.core.Community.buttons.collectAsState()
                             val mine = s.learned[name]

@@ -480,15 +480,16 @@ fun ControlScreen() {
         }
         val community by com.nikalbazu.ids.core.Community.buttons.collectAsState()
         val learned = community.keys + s.learned.keys
-        val names = listOf("Wi‑Fi", "Bluetooth", "No molestar", "Captura") +
-            Device.STOCK_BUTTONS.take(5) + Device.STOCK_BUTTONS.drop(5).filter { it in learned } +
-            listOf("Carga 80 %", "Ratón virtual", "Gatillos L2/R2")
+        val names = listOf("Wi‑Fi", "Bluetooth", "No molestar", "Captura") + Device.AYN_DIRECT.keys +
+            Device.STOCK_BUTTONS.take(3) + Device.STOCK_BUTTONS.drop(3).filter { it in learned } +
+            listOf("Clean memory", "Carga 80 %", "Ratón virtual")
         val states by Device.states.collectAsState()
         LaunchedEffect(Unit) { Device.refreshStates() }
         Grid(4, names.size) { i ->
             val n = names[i]
             val on = states[n] ?: false
             val hint = when {
+                n in Device.AYN_DIRECT -> "Ajuste de AYN"
                 n in learned -> "Botón de AYN"
                 n in Device.STOCK_BUTTONS -> "Sin aprender"
                 else -> ""

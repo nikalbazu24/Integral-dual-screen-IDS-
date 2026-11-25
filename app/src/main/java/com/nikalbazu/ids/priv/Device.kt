@@ -23,10 +23,14 @@ object Device {
     private val FAN = mapOf("Silencio" to 1, "Auto" to 4, "Máx" to 5, "Personalizado" to 6)
     private val PERF = mapOf("Ahorro" to 0, "Equilibrado" to 1, "Rendimiento" to 2, "Máximo" to 2)
 
+    /** Momento del último cambio hecho desde IDS (para no pisarlo con una lectura vieja). */
+    @Volatile var lastSet = 0L
+
     fun setFan(mode: String) {
+        lastSet = System.currentTimeMillis()
         Store.update { it.copy(fan = mode) }
         if (mode == "Inteligente") { smartLevel = -1; smartTick(Store.tele.value.socC) }
-        else { Store.fanNow.value = ""; FAN[mode]?.let { Helper.send("fan $it") } }
+        else { Store.fanNow.value = ""; FAN[mode]?.let { Helper.send("ayn fan_mode $it") } }
     }
 
     // ---- Ventilador inteligente: sube solo cuando el chip se calienta ----
@@ -52,15 +56,16 @@ object Device {
         if (next != smartLevel) {
             val first = smartLevel < 0
             smartLevel = next
-            Helper.send("fan ${SMART[next].second}")
+            Helper.send("ayn fan_mode ${SMART[next].second}")
             if (!first) Store.log("Chip a ${c.toInt()} °C → ventilador en ${SMART[next].first}", "Ventilador")
         }
         Store.fanNow.value = SMART[smartLevel].first
     }
 
     fun setPerf(mode: String) {
+        lastSet = System.currentTimeMillis()
         Store.update { it.copy(perf = mode) }
-        PERF[mode]?.let { Helper.send("perf $it") }
+        PERF[mode]?.let { Helper.send("ayn performance_mode $it") }
     }
 
     fun setHz(mode: String) {
@@ -89,13 +94,13 @@ object Device {
     fun setTopBrightness(pct: Int) = Helper.send("bright ${(pct.coerceIn(1, 100) * 255) / 100}")
 
     /** Brillo de la pantalla de abajo en % real (la app lo escala al máximo que acepta esa pantalla). */
+    /** Brillo de la pantalla de abajo: el ajuste de AYN dual_screen_brightness_level (0-100). */
     fun setBottomBrightness(pct: Int) {
-        val name = bottomBacklight() ?: return
-        Helper.send("blight $name ${pct.coerceIn(1, 100)}")
+        Helper.send("ayn dual_screen_brightness_level ${pct.coerceIn(1, 100)}")
         bottomSet = pct
     }
     private var bottomSet = -1
-    val bottomPct: Int get() = if (bottomSet > 0) bottomSet else Store.tele.value.blPct[bottomBacklight() ?: ""] ?: 50
+    val bottomPct: Int get() = if (bottomSet > 0) bottomSet else Store.tele.value.ayn["dual_screen_brightness_level"]?.toIntOrNull() ?: 50
     private fun bottomBacklight(): String? { val bl = Store.tele.value.backlights; return bl.getOrNull(1) ?: bl.firstOrNull() }
 
     fun volume(stream: Int = AudioManager.STREAM_MUSIC): Int = runCatching {
@@ -116,14 +121,14 @@ object Device {
         val bl = Store.tele.value.backlights
         val top = bl.getOrNull(0); val bottom = bl.getOrNull(1)
         when (mode) {
-            "Dos" -> { top?.let { Helper.send("blight $it ${topBrightness().coerceAtLeast(20)}") }; bottom?.let { Helper.send("blight $it ${bottomPct.coerceAtLeast(20)}") } }
+            "Dos" -> { setBottomBrightness(bottomPct.coerceAtLeast(20)) }
             "Arriba" -> bottom?.let { Helper.send("blight $it 0") }
             "Abajo" -> top?.let { Helper.send("blight $it 0") }
         }
     }
 
     // ---- Botones de AYN aprendidos ----
-    val STOCK_BUTTONS = listOf("Auto lock", "Estilo de control", "Direct power supply", "Vibración", "Luz ambiental",
+    val STOCK_BUTTONS = listOf("Auto lock", "Estilo de control", "Vibración",
         "Botón extra 1", "Botón extra 2", "Botón extra 3")
 
     private fun readSetting(full: String): String? = runCatching {
@@ -176,7 +181,7 @@ object Device {
     val states = kotlinx.coroutines.flow.MutableStateFlow<Map<String, Boolean>>(emptyMap())
     private val pending = java.util.concurrent.ConcurrentHashMap<String, Pair<Boolean, Long>>()
     private val stateIo = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "ids-states").apply { isDaemon = true } }
-    private val WATCH = listOf("Wi‑Fi", "Bluetooth", "No molestar", "Carga 80 %", "Ratón virtual", "Gatillos L2/R2", "Force landscape")
+    private val WATCH = listOf("Wi‑Fi", "Bluetooth", "No molestar", "Carga 80 %", "Ratón virtual", "Gatillos L2/R2") + AYN_DIRECT.keys
 
     fun refreshStates() = stateIo.execute {
         val now = System.currentTimeMillis()
@@ -188,7 +193,16 @@ object Device {
     }
 
     // ---- Accesos rápidos ----
+    /** Botones que son ajustes directos de AYN: nombre → (ajuste, valor encendido, valor apagado). */
+    val AYN_DIRECT = mapOf(
+        "Direct power supply" to Triple("is_charging_separation", "1", "0"),
+        "Force landscape" to Triple("force_landscape", "1", "0"),
+        "Luz ambiental" to Triple("joystick_light_enabled", "1,1", "0,0"),
+        "Mantener pantalla" to Triple("keep_screen_on", "1", "0"),
+    )
+
     fun isOn(name: String): Boolean = runCatching {
+        AYN_DIRECT[name]?.let { (k, on, _) -> return Store.tele.value.ayn[k]?.let { it == on || (k == "joystick_light_enabled" && it.contains('1')) } ?: false }
         if (name in com.nikalbazu.ids.core.Community.all()) return learnedOn(name)
         when (name) {
             "Wi‑Fi" -> ctx.getSystemService(WifiManager::class.java).isWifiEnabled
@@ -203,6 +217,11 @@ object Device {
         // Se muestra el cambio al instante; la lectura real lo confirma a los 4 s
         pending[name] = on to System.currentTimeMillis() + 4000
         states.value = states.value + (name to on)
+        AYN_DIRECT[name]?.let { (k, onV, offV) ->
+            if (k == "joystick_light_enabled" && on) applyLeds() else Helper.send("ayn $k ${if (on) onV else offV}")
+            if (k == "joystick_light_enabled") Store.update { it.copy(effect = if (on) (if (it.effect == "Apagadas") "Fijo" else it.effect) else "Apagadas") }
+            return
+        }
         if (name in com.nikalbazu.ids.core.Community.all()) { applyLearned(name, on); return }
         if (name in STOCK_BUTTONS) { Store.toast("Enséñale este botón: pantalla de arriba › Aprender botones de AYN"); return }
         when (name) {
@@ -210,7 +229,6 @@ object Device {
             "Bluetooth" -> Helper.send("bt " + if (on) "on" else "off")
             "No molestar" -> Helper.send("dnd " + if (on) "on" else "off")
             "Captura" -> { screenshot(); return }
-            "Force landscape" -> Helper.send("land " + if (on) "on" else "off")
             "Clean memory" -> { cleanMemory(); return }
             else -> Store.toast("Guardado · se conectará a la consola en una próxima versión")
         }
@@ -277,25 +295,43 @@ object Device {
     private fun rgb(c: Long) = Triple(((c shr 16) and 0xFF).toInt(), ((c shr 8) and 0xFF).toInt(), (c and 0xFF).toInt())
 
     /** Aplica color, brillo y efecto a los anillos de los sticks. */
+    private fun hex6(c: Long) = String.format("%06X", c and 0xFFFFFF)
+
+    /** Luces de los sticks: se aplican con los mismos ajustes que usa AYN (también los ve la barra de notificaciones). */
     fun applyLeds() {
         val s = Store.settings.value
-        val br = (s.ledBright.coerceIn(0, 100) * 255) / 100
-        val (lr, lg, lb) = rgb(s.ledL)
-        val (rr, rg, rb) = rgb(if (s.ledSame) s.ledL else s.ledR)
+        val br = s.ledBright.coerceIn(1, 100)
+        val l = hex6(s.ledL); val r = hex6(if (s.ledSame) s.ledL else s.ledR)
         when (s.effect) {
-            "Apagadas" -> Helper.send("led all 0 0 0 0")
-            "Respirar" -> Helper.send("fxb $lr $lg $lb $br")
+            "Apagadas" -> Helper.send("lights 0 000000 000000 0")
+            "Respirar" -> Helper.send("fxb $l $br")
             "Arcoíris" -> Helper.send("fxr $br")
             "Según batería" -> {
                 val p = Store.tele.value.batteryPct.coerceIn(0, 100)
-                Helper.send("led all ${255 - p * 255 / 100} ${p * 255 / 100} 40 $br")
+                val c = String.format("%02X%02X28", 255 - p * 255 / 100, p * 255 / 100)
+                Helper.send("lights 1 $c $c $br")
             }
             "Según temperatura" -> {
-                val c = (Store.tele.value.socC ?: 40f).coerceIn(30f, 85f)
-                val k = ((c - 30f) / 55f * 255).toInt()
-                Helper.send("led all $k ${200 - k * 200 / 255} ${255 - k} $br")
+                val k = (((Store.tele.value.socC ?: 40f).coerceIn(30f, 85f) - 30f) / 55f * 255).toInt()
+                val c = String.format("%02X%02X%02X", k, 200 - k * 200 / 255, 255 - k)
+                Helper.send("lights 1 $c $c $br")
             }
-            else -> Helper.send("led l $lr $lg $lb $br", "led r $rr $rg $rb $br")
+            else -> Helper.send("lights 1 $l $r $br")
+        }
+    }
+
+    /** Lee lo que tiene AYN guardado (color, brillo, encendido) para que IDS parta igual que la consola. */
+    fun syncLedsFromSystem() {
+        val a = Store.tele.value.ayn
+        val cols = a["joystick_led_light_picker_color"]?.split(',')?.mapNotNull { c ->
+            c.trim().removePrefix("#").takeLast(6).toLongOrNull(16)?.let { 0xFF000000 or it }
+        } ?: return
+        if (cols.isEmpty()) return
+        val br = a["led_light_brightness_percent"]?.toFloatOrNull()?.let { (it * 100).toInt().coerceIn(1, 100) }
+        val off = a["joystick_light_enabled"]?.split(',')?.all { it.trim() == "0" } == true
+        Store.update { st ->
+            st.copy(ledL = cols[0], ledR = cols.getOrElse(1) { cols[0] }, ledSame = cols.getOrElse(1) { cols[0] } == cols[0],
+                ledBright = br ?: st.ledBright, effect = if (off) "Apagadas" else if (st.effect == "Apagadas") "Fijo" else st.effect)
         }
     }
 

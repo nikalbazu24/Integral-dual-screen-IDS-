@@ -225,11 +225,22 @@ class PanelService : Service() {
             fanRpm = i("fan"),
             ramUsedGb = (mi.totalMem - mi.availMem) / gb, ramTotalGb = mi.totalMem / gb,
             backlights = m["bl"].orEmpty().split(',').filter { it.isNotBlank() },
+            ayn = m.filterKeys { it.startsWith("ayn_") }.mapKeys { it.key.removePrefix("ayn_") },
             blPct = m.filterKeys { it.startsWith("blp_") }.mapNotNull { (k, v) -> v.toIntOrNull()?.let { k.removePrefix("blp_") to it } }.toMap(),
             leds = m["leds"].orEmpty().split(',').filter { it.isNotBlank() },
             helperAlive = Helper.alive(),
             maxTodayC = maxOf(prev.maxTodayC, soc ?: 0f),
         )
+        // Lo que se cambie desde la barra de notificaciones o desde AYN también se ve en IDS
+        val ayn = Store.tele.value.ayn
+        if (ayn.isNotEmpty()) {
+            if (!ledsSynced) { ledsSynced = true; Device.syncLedsFromSystem() }
+            val fanName = mapOf("0" to "Apagado", "1" to "Silencio", "4" to "Auto", "5" to "Máx", "6" to "Personalizado")[ayn["fan_mode"]]
+            val perfName = mapOf("0" to "Ahorro", "1" to "Equilibrado", "2" to "Rendimiento")[ayn["performance_mode"]]
+            val cur = Store.settings.value
+            if (System.currentTimeMillis() - Device.lastSet > 3000 && (fanName != null && cur.fan != "Inteligente" && fanName != cur.fan) || (perfName != null && perfName != cur.perf)))
+                Store.update { it.copy(fan = if (it.fan == "Inteligente" || fanName == null) it.fan else fanName, perf = perfName ?: it.perf) }
+        }
         // Ahorro automático al 20 %
         val st = Store.settings.value
         if ("low" in st.battery && !charging && pct in 1..20 && !lowApplied) {
@@ -241,6 +252,7 @@ class PanelService : Service() {
         if (pct > 25 || charging) lowApplied = false
     }
     private var lowApplied = false
+    private var ledsSynced = false
     private var ledTick = 0
 
     private fun tickTimer() {
