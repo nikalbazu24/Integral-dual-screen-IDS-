@@ -62,6 +62,8 @@ data class Settings(
     val stockPackages: List<String> = emptyList(),
     /** Bloqueo total: desactiva esas apps mientras IDS esté instalado. */
     val blockStock: Boolean = false,
+    /** Panel de AYN quitado para siempre (no se revierte al cerrar IDS). */
+    val permStock: Boolean = false,
 )
 
 data class Learned(val on: Map<String, String>, val off: Map<String, String>)
@@ -118,6 +120,9 @@ object Freq {
         "Personalizado" to "Tus propios topes",
     )
 }
+
+/** Nombres antiguos de botones de AYN → nombres que usa AYN. */
+val RENAMED = mapOf("Bloqueo automático" to "Auto lock", "Alimentación directa" to "Direct power supply")
 
 object Store {
     private lateinit var appContext: Context
@@ -198,7 +203,7 @@ object Store {
             l.put(name, JSONObject().put("on", JSONObject(v.on as Map<*, *>)).put("off", JSONObject(v.off as Map<*, *>)))
         }
         put("learned", l)
-        put("stockPackages", JSONArray(s.stockPackages)); put("blockStock", s.blockStock)
+        put("stockPackages", JSONArray(s.stockPackages)); put("blockStock", s.blockStock); put("permStock", s.permStock)
     }
 
     private fun JSONObject.strings(key: String): List<String>? = optJSONArray(key)?.let { a -> (0 until a.length()).map { a.optString(it) } }
@@ -238,9 +243,9 @@ object Store {
             notes = o.optString("notes", d.notes), aynKey = o.optString("aynKey", d.aynKey),
             replaceStock = o.optBoolean("replaceStock", d.replaceStock), bottomDisplay = o.optInt("bottomDisplay", d.bottomDisplay),
             favorites = o.strings("favorites") ?: d.favorites, games = games, timerMin = o.optInt("timerMin", d.timerMin),
-            learned = learned,
+            learned = learned.mapKeys { (k, _) -> RENAMED[k] ?: k },
             stockPackages = o.strings("stockPackages") ?: d.stockPackages,
-            blockStock = o.optBoolean("blockStock", d.blockStock),
+            blockStock = o.optBoolean("blockStock", d.blockStock), permStock = o.optBoolean("permStock", d.permStock),
         )
     }
 }

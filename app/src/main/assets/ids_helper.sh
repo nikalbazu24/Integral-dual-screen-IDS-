@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=6
+VERSION=7
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -27,6 +27,20 @@ stock_pids() { for k in $(stock_list | sort -u); do pgrep -f "$k" 2>/dev/null; d
 okpkg() { case "$1" in ''|*[!a-zA-Z0-9._]*|android|com.android.systemui|$PKG) return 1;; esac; return 0; }
 block() { touch "$D/block.on"; for k in $(stock_list | sort -u); do okpkg "$k" && pm disable-user --user 0 "$k" >/dev/null 2>&1; done; }
 unblock() { rm -f "$D/block.on"; for k in $(stock_list | sort -u); do okpkg "$k" && pm enable "$k" >/dev/null 2>&1; done; }
+# Quitar para siempre: igual que el bloqueo, pero NO se revierte si IDS se cierra. Anota el resultado de cada paquete.
+blockperm() {
+  touch "$D/block.on" "$D/perm.on"; : > "$D/block.tmp"
+  for k in $(stock_list | sort -u); do
+    okpkg "$k" || continue
+    am force-stop "$k" >/dev/null 2>&1
+    pm disable-user --user 0 "$k" >/dev/null 2>&1
+    if pm list packages -d 2>/dev/null | grep -qx "package:$k"; then echo "$k ok" >> "$D/block.tmp"
+    elif pm list packages 2>/dev/null | grep -qx "package:$k"; then echo "$k fallo" >> "$D/block.tmp"
+    else echo "$k noexiste" >> "$D/block.tmp"; fi
+  done
+  mv "$D/block.tmp" "$D/block.txt"; own "$D/block.txt"
+}
+unblockperm() { rm -f "$D/perm.on"; unblock; rm -f "$D/block.txt"; }
 probe() {
   dumpsys window windows 2>/dev/null | awk '
     /Window #/ { if (pkg != "" && disp != "") print disp, pkg; pkg = ""; disp = "" }
@@ -43,7 +57,7 @@ keep_frozen() { [ -f "$D/freeze.on" ] && for p in $(stock_pids); do kill -STOP "
 
 cleanup() {
   for p in $(stock_pids); do kill -CONT "$p" 2>/dev/null; done
-  [ -f "$D/block.on" ] && unblock
+  [ -f "$D/block.on" ] && [ ! -f "$D/perm.on" ] && unblock
   fx_stop
   [ -n "$KW" ] && kill "$KW" 2>/dev/null
   pkill -f "getevent -ql" 2>/dev/null
@@ -194,6 +208,13 @@ run() {
     stockadd) okpkg "$a" && { grep -qx "$a" "$D/stock.list" 2>/dev/null || echo "$a" >> "$D/stock.list"; } && [ -f "$D/freeze.on" ] && freeze;;
     stockclear) rm -f "$D/stock.list";;
     block) block;;
+    blockperm) blockperm;;
+    unblockperm) unblockperm;;
+    land)
+      case "$a" in
+        on) settings put system accelerometer_rotation 0; settings put system user_rotation 0; wm set-ignore-orientation-request true >/dev/null 2>&1;;
+        off) wm set-ignore-orientation-request false >/dev/null 2>&1; settings put system accelerometer_rotation 1;;
+      esac;;
     unblock) unblock;;
     snap)
       case "$a" in 1|2) ;; *) return;; esac

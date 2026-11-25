@@ -7,7 +7,7 @@ import os
 import re
 import sys
 
-ALLOWED = {"Bloqueo automático", "Estilo de control", "Alimentación directa", "Vibración", "Luz ambiental",
+ALLOWED = {"Auto lock", "Estilo de control", "Direct power supply", "Force landscape", "Clean memory", "Vibración", "Luz ambiental",
            "Botón extra 1", "Botón extra 2", "Botón extra 3"}
 KEY = re.compile(r"^(system|global|secure):[A-Za-z0-9_.]{1,80}$")
 VAL = re.compile(r"^[A-Za-z0-9_.,:-]{1,80}$")

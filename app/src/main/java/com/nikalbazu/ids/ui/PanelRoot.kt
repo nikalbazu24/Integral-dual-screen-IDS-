@@ -127,11 +127,19 @@ private fun StatusBar() {
 @Composable
 private fun Dock(sec: String) {
     val t = LocalTok.current
-    val items = listOf("inicio" to "Inicio", "control" to "Control", "ct" to "ClusterTune", "hw" to "Hardware",
-        "juegos" to "Juegos", "herr" to "Herramientas", "pers" to "Personalizar")
+    val items = listOf(Triple("inicio", "Inicio", Ico.INICIO), Triple("control", "Control", Ico.CONTROL), Triple("ct", "ClusterTune", Ico.CT),
+        Triple("hw", "Hardware", Ico.HW), Triple("juegos", "Juegos", Ico.JUEGOS), Triple("herr", "Herramientas", Ico.HERR), Triple("pers", "Personalizar", Ico.PERS))
     Row(Modifier.fillMaxWidth().card(t, null, 44.dp).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        items.forEach { (id, label) ->
-            Pill(label, id == sec, Modifier.weight(1f), 76.dp, 18.sp) { Store.nav { it.copy(sec = id) } }
+        items.forEach { (id, label, ico) ->
+            val on = id == sec
+            val shape = RoundedCornerShape(36.dp)
+            val base = if (on) Modifier.shadow(12.dp, shape, ambientColor = t.sel.copy(alpha = 0.4f), spotColor = t.sel.copy(alpha = 0.5f)).background(t.sel, shape)
+                else Modifier.background(t.track, shape)
+            Column(Modifier.weight(1f).height(76.dp).then(base).clip(shape).tap { Store.nav { it.copy(sec = id) } },
+                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically)) {
+                Icon(ico, if (on) t.selTx else t.tx)
+                T(label, 15.sp, FontWeight.ExtraBold, if (on) t.selTx else t.tx, maxLines = 1)
+            }
         }
     }
 }

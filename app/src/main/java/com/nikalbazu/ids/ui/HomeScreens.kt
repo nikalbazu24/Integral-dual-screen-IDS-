@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -82,6 +83,7 @@ fun InicioScreen() {
                             if ("temp" in w) TempCard(Modifier.weight(1f).fillMaxHeight())
                             if ("consola" in w) ConsolaCard(Modifier.weight(1.15f).fillMaxHeight())
                         }
+                        AccessRow()
                         if ("ct" in w) CtCard(Modifier.fillMaxWidth().height(250.dp))
                     }
                     if ("sliders" in w) VolumeBar { pop = "volumen" }
@@ -226,7 +228,7 @@ private fun TempCard(modifier: Modifier) {
             .tap { Store.nav { it.copy(sec = "hw", hwTab = "fan") } }.padding(horizontal = 22.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
     ) {
-        Ring(deg(tele.socC), "chip", c / 90f, color, 230.dp, 14.dp, 66.sp, 18.sp)
+        Ring(deg(tele.socC), "chip", c / 90f, color, 196.dp, 13.dp, 58.sp, 17.sp)
         Box(Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(t.track).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
             T("●  " + tempState(c), 15.sp, FontWeight.Black, color, maxLines = 1)
         }
@@ -256,7 +258,7 @@ private fun ConsolaCard(modifier: Modifier) {
         ).forEach { (row, pick) ->
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 T(row.first, 15.sp, FontWeight.ExtraBold, t.mu)
-                SegRow(row.second, row.third, Modifier.fillMaxWidth(), 56.dp, 15.sp, pick)
+                SegRow(row.second, row.third, Modifier.fillMaxWidth(), 48.dp, 15.sp, pick)
             }
         }
     }
@@ -298,6 +300,49 @@ private fun CtCard(modifier: Modifier) {
                 s.autoTune -> "activo, ajusta los topes según el juego"
                 else -> "apagado"
             }, 15.sp, FontWeight.ExtraBold, maxLines = 1)
+        }
+    }
+}
+
+/** Accesos con ícono: Direct power supply, Force landscape, Auto lock y Clean memory. */
+@Composable
+private fun AccessRow() {
+    val t = LocalTok.current
+    val s by Store.settings.collectAsState()
+    val community by com.nikalbazu.ids.core.Community.buttons.collectAsState()
+    val cleaned by Device.cleaned.collectAsState()
+    var tick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(2000); tick++ } }
+    val items = listOf(
+        listOf("Direct power supply", Ico.POWER, "Usa el cargador, no la batería", 4),
+        listOf("Force landscape", Ico.LAND, "Pantalla siempre acostada", 2),
+        listOf("Auto lock", Ico.AIM, "Para juegos de disparo", 0),
+        listOf("Clean memory", Ico.RAM, "Cierra apps de fondo", 1),
+    )
+    Row(Modifier.fillMaxWidth().height(64.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        items.forEach { (nameA, icoA, hintA, colA) ->
+            val name = nameA as String; val ico = icoA as String; val col = t.v[(colA as Int) % t.v.size]
+            val action = name == "Clean memory"
+            val on = !action && remember(tick, s.learned, s.toggles, community) { Device.isOn(name) }
+            val needsLearn = name in Device.STOCK_BUTTONS && name !in com.nikalbazu.ids.core.Community.all()
+            val hint = when {
+                action -> cleaned.ifBlank { hintA as String }
+                needsLearn -> "Enséñalo una vez arriba"
+                on -> "Activado"
+                else -> hintA as String
+            }
+            val shape = RoundedCornerShape(32.dp)
+            val base = if (on) Modifier.shadow(12.dp, shape, ambientColor = t.sel.copy(alpha = 0.4f), spotColor = t.sel.copy(alpha = 0.5f)).background(t.sel, shape)
+                else Modifier.background(t.track, shape)
+            Row(Modifier.weight(1f).fillMaxHeight().then(base).clip(shape).tap { Device.toggle(name); tick++ }.padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.size(42.dp).clip(RoundedCornerShape(21.dp)).background(if (on) Color.Black.copy(alpha = 0.12f) else col.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center) { Icon(ico, if (on) t.selTx else col, 24.dp) }
+                Column(Modifier.weight(1f)) {
+                    T(name, 15.sp, FontWeight.Black, if (on) t.selTx else t.tx, maxLines = 1)
+                    T(hint, 12.sp, FontWeight.Bold, if (on) t.selTx.copy(alpha = 0.75f) else t.mu, maxLines = 1)
+                }
+            }
         }
     }
 }

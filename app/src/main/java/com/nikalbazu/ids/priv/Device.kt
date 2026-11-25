@@ -121,7 +121,7 @@ object Device {
     }
 
     // ---- Botones de AYN aprendidos ----
-    val STOCK_BUTTONS = listOf("Bloqueo automático", "Estilo de control", "Alimentación directa", "Vibración", "Luz ambiental",
+    val STOCK_BUTTONS = listOf("Auto lock", "Estilo de control", "Direct power supply", "Vibración", "Luz ambiental",
         "Botón extra 1", "Botón extra 2", "Botón extra 3")
 
     private fun readSetting(full: String): String? = runCatching {
@@ -180,6 +180,8 @@ object Device {
             "Bluetooth" -> Helper.send("bt " + if (on) "on" else "off")
             "No molestar" -> Helper.send("dnd " + if (on) "on" else "off")
             "Captura" -> { screenshot(); return }
+            "Force landscape" -> Helper.send("land " + if (on) "on" else "off")
+            "Clean memory" -> { cleanMemory(); return }
             else -> Store.toast("Guardado · se conectará a la consola en una próxima versión")
         }
         Store.update { s -> s.copy(toggles = if (on) s.toggles + name else s.toggles - name) }
@@ -187,7 +189,25 @@ object Device {
 
     fun screenshot() { Helper.send("shot"); Store.toast("Captura guardada en Imágenes › IDS") }
     fun closeGame() { Store.foreground.value?.let { Helper.send("kill $it"); Store.toast("Juego cerrado") } }
-    fun freeRam() { Helper.send("killbg"); Store.toast("Memoria liberada") }
+    fun freeRam() = cleanMemory()
+
+    /** Clean memory: cierra apps de fondo y avisa cuánta memoria quedó libre. */
+    val cleaned = kotlinx.coroutines.flow.MutableStateFlow("")
+    fun cleanMemory() {
+        val am = ctx.getSystemService(android.app.ActivityManager::class.java)
+        fun free(): Long = android.app.ActivityManager.MemoryInfo().also { am.getMemoryInfo(it) }.availMem
+        val before = free()
+        Helper.send("killbg")
+        Thread {
+            Thread.sleep(1800)
+            val after = free()
+            val gb = after / 1_073_741_824f
+            val gained = ((after - before).coerceAtLeast(0)) / 1_048_576
+            cleaned.value = String.format(java.util.Locale("es"), "Listo · %.1f GB libres", gb)
+            Store.toast(if (gained > 0) "Memoria liberada: $gained MB" else "Memoria ya estaba limpia")
+            Thread.sleep(6000); cleaned.value = ""
+        }.start()
+    }
 
     // ---- ClusterTune ----
     fun applyCaps(name: String, custom: Map<String, Int>? = null) {

@@ -16,7 +16,7 @@ object Helper {
     private lateinit var ctx: Context
     private var lastLaunch = 0L
     var method: String = "ninguno"; private set
-    private const val VERSION = "6"
+    private const val VERSION = "7"
     /** Todo lo que toca archivos va en segundo plano para que el panel nunca se trabe. */
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "ids-helper").apply { isDaemon = true } }
 
@@ -86,6 +86,11 @@ object Helper {
     }.getOrDefault(emptyList())
 
     fun probeAge(n: Int): Long = File(dir, "probe_$n.txt").let { if (it.exists()) System.currentTimeMillis() - it.lastModified() else Long.MAX_VALUE }
+
+    /** Resultado de "Quitar para siempre": paquete → ok / fallo / noexiste. */
+    fun readBlock(): List<Pair<String, String>> = runCatching {
+        File(dir, "block.txt").readLines().mapNotNull { l -> l.trim().split(" ").takeIf { it.size == 2 }?.let { it[0] to it[1] } }
+    }.getOrDefault(emptyList())
 
     fun readDiag(): String = runCatching { File(dir, "diag.txt").readText() }.getOrDefault("")
 

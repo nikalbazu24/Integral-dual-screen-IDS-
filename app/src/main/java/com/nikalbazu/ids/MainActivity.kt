@@ -128,6 +128,25 @@ private fun Setup() {
                             if (!detecting) Helper.send("probe 1")
                         }
                         T("Detectado: " + (listOf("com.odin.dualscreen.assistant") + s.stockPackages).distinct().joinToString(), 15.sp, FontWeight.Bold, t.mu, maxLines = 3)
+                        T("Quitar el panel de AYN para siempre", 22.sp, FontWeight.Black)
+                        T("Desactiva el panel de fábrica y no vuelve aunque cierres o desinstales IDS. Primero usa “Detectar panel de AYN” para que encuentre el panel correcto. Se puede devolver cuando quieras.",
+                            16.sp, FontWeight.Bold, t.mu, maxLines = 4)
+                        var res by remember { mutableStateOf(Helper.readBlock()) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Pill(if (s.permStock) "Quitado ✓ (volver a aplicar)" else "Quitar para siempre", !s.permStock, Modifier.weight(1f), 58.dp) {
+                                Store.update { it.copy(permStock = true, blockStock = true) }
+                                Helper.send("blockperm")
+                                scope.launch { delay(2500); res = Helper.readBlock() }
+                            }
+                            if (s.permStock) Pill("Devolver el panel", false, Modifier.weight(1f), 58.dp) {
+                                Store.update { it.copy(permStock = false, blockStock = false) }
+                                Helper.send("unblockperm")
+                                res = emptyList()
+                            }
+                        }
+                        if (res.isNotEmpty()) T(res.joinToString("\n") { (pkg, r) ->
+                            when (r) { "ok" -> "✓ $pkg desactivado"; "fallo" -> "✗ $pkg no se dejó desactivar"; else -> "· $pkg no existe en esta consola" }
+                        }, 15.sp, FontWeight.Bold, if (res.any { it.second == "ok" }) t.v[1] else t.v[0], maxLines = 6)
                     }
                 }
                 Card {
@@ -160,7 +179,7 @@ private fun Setup() {
                     }
                     T("Al compartir se abre GitHub con todo rellenado: solo toca “Submit new issue”. Se revisa, se agrega a la app y le llega a todos en la siguiente versión.",
                         15.sp, FontWeight.Bold, t.mu, maxLines = 3)
-                    Device.STOCK_BUTTONS.forEach { name ->
+                    (Device.STOCK_BUTTONS + "Force landscape").forEach { name ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             val community by com.nikalbazu.ids.core.Community.buttons.collectAsState()
                             val mine = s.learned[name]
