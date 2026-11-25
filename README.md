@@ -6,7 +6,7 @@ La Thor trae dos pantallas, pero la de abajo se usa poco: el panel de fábrica m
 
 Se abre y se cierra con el **botón AYN**, sin cerrar el juego que tienes arriba. Y todo lo que cambias se aplica de verdad en la consola: IDS usa los mismos ajustes que el sistema de AYN, así que la barra de notificaciones y el panel original siempre muestran lo mismo.
 
-> Proyecto hecho por Nicolás ([@nikalbazu24](https://github.com/nikalbazu24)) con ayuda de Claude. Las imágenes de abajo son los bocetos interactivos con los que se diseñó cada pantalla antes de programarla.
+Las imágenes de abajo son los bocetos interactivos con los que se diseñó cada pantalla antes de programarla.
 
 ![Inicio](docs/img/inicio.png)
 
