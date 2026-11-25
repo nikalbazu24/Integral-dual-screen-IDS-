@@ -16,7 +16,7 @@ object Helper {
     private lateinit var ctx: Context
     private var lastLaunch = 0L
     var method: String = "ninguno"; private set
-    private const val VERSION = "5"
+    private const val VERSION = "6"
     /** Todo lo que toca archivos va en segundo plano para que el panel nunca se trabe. */
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "ids-helper").apply { isDaemon = true } }
 
@@ -76,6 +76,16 @@ object Helper {
     }.getOrDefault(emptyMap())
 
     fun snapAge(n: Int): Long = File(dir, "snap_$n.txt").let { if (it.exists()) System.currentTimeMillis() - it.lastModified() else Long.MAX_VALUE }
+
+    /** Ventanas visibles por pantalla ("pantalla paquete") y procesos de AYN ("proc nombre"). */
+    fun readProbe(n: Int): List<Pair<String, String>> = runCatching {
+        File(dir, "probe_$n.txt").readLines().mapNotNull { l ->
+            val p = l.trim().split(" ")
+            if (p.size >= 2) p[0] to p[1] else null
+        }
+    }.getOrDefault(emptyList())
+
+    fun probeAge(n: Int): Long = File(dir, "probe_$n.txt").let { if (it.exists()) System.currentTimeMillis() - it.lastModified() else Long.MAX_VALUE }
 
     fun readDiag(): String = runCatching { File(dir, "diag.txt").readText() }.getOrDefault("")
 

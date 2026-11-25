@@ -56,6 +56,10 @@ data class Settings(
     val timerMin: Int = 60,
     /** Botones de AYN aprendidos: nombre → (ajuste → valor encendido / apagado). */
     val learned: Map<String, Learned> = emptyMap(),
+    /** Paquetes que muestran el panel de fábrica (detectados al presionar el botón AYN). */
+    val stockPackages: List<String> = emptyList(),
+    /** Bloqueo total: desactiva esas apps mientras IDS esté instalado. */
+    val blockStock: Boolean = false,
 )
 
 data class Learned(val on: Map<String, String>, val off: Map<String, String>)
@@ -126,6 +130,7 @@ object Store {
     val message = MutableStateFlow<String?>(null)
     /** Botón de AYN que se está aprendiendo ahora mismo (null = ninguno). */
     val learningSetting = MutableStateFlow<String?>(null)
+    val detectingStock = MutableStateFlow(false)
 
     fun init(ctx: Context) {
         appContext = ctx.applicationContext
@@ -189,6 +194,7 @@ object Store {
             l.put(name, JSONObject().put("on", JSONObject(v.on as Map<*, *>)).put("off", JSONObject(v.off as Map<*, *>)))
         }
         put("learned", l)
+        put("stockPackages", JSONArray(s.stockPackages)); put("blockStock", s.blockStock)
     }
 
     private fun JSONObject.strings(key: String): List<String>? = optJSONArray(key)?.let { a -> (0 until a.length()).map { a.optString(it) } }
@@ -229,6 +235,8 @@ object Store {
             replaceStock = o.optBoolean("replaceStock", d.replaceStock), bottomDisplay = o.optInt("bottomDisplay", d.bottomDisplay),
             favorites = o.strings("favorites") ?: d.favorites, games = games, timerMin = o.optInt("timerMin", d.timerMin),
             learned = learned,
+            stockPackages = o.strings("stockPackages") ?: d.stockPackages,
+            blockStock = o.optBoolean("blockStock", d.blockStock),
         )
     }
 }

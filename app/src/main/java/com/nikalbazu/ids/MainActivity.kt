@@ -110,12 +110,24 @@ private fun Setup() {
                             Store.learningKey.value = !learning
                             Helper.ensureRunning()
                         }
-                        ToggleCard("Reemplazar el panel de AYN", "Duerme el panel de fábrica mientras IDS esté activo. Si IDS se cierra, vuelve solo.",
+                        ToggleCard("Dormir el panel de AYN", "Lo pausa mientras IDS esté activo. Si IDS se cierra, vuelve solo.",
                             s.replaceStock, height = 120.dp) {
                             val on = !s.replaceStock
                             Store.update { it.copy(replaceStock = on) }
                             Helper.send(if (on) "freeze" else "thaw")
                         }
+                        ToggleCard("Bloqueo total del panel de AYN", "Desactiva la app del panel de fábrica. Se reactiva sola si desinstalas o cierras IDS.",
+                            s.blockStock, height = 120.dp) {
+                            val on = !s.blockStock
+                            Store.update { it.copy(blockStock = on) }
+                            Helper.send(if (on) "block" else "unblock")
+                        }
+                        val detecting by Store.detectingStock.collectAsState()
+                        Pill(if (detecting) "Ahora presiona el botón AYN…" else "Detectar panel de AYN", detecting, Modifier.fillMaxWidth(), 56.dp) {
+                            Store.detectingStock.value = !detecting
+                            if (!detecting) Helper.send("probe 1")
+                        }
+                        T("Detectado: " + (listOf("com.odin.dualscreen.assistant") + s.stockPackages).distinct().joinToString(), 15.sp, FontWeight.Bold, t.mu, maxLines = 3)
                     }
                 }
                 Card {

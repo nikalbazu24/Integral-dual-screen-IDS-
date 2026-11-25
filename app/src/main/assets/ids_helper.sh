@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=5
+VERSION=6
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -21,13 +21,29 @@ own() { chown "$U:$U" "$1" 2>/dev/null; chmod 666 "$1" 2>/dev/null; }
 num() { case "$1" in ''|*[!0-9]*) return 1;; esac; return 0; }
 
 # Panel de fábrica: se duerme mientras IDS lo reemplace (también si el sistema lo reinicia al abrir la consola)
-stock_pids() { pgrep -f "$STOCK" 2>/dev/null; }
+# Lista de paquetes del panel de fábrica: el conocido + los que la app detecte al presionar el botón AYN
+stock_list() { echo "$STOCK"; [ -f "$D/stock.list" ] && cat "$D/stock.list"; }
+stock_pids() { for k in $(stock_list | sort -u); do pgrep -f "$k" 2>/dev/null; done; }
+okpkg() { case "$1" in ''|*[!a-zA-Z0-9._]*|android|com.android.systemui|$PKG) return 1;; esac; return 0; }
+block() { touch "$D/block.on"; for k in $(stock_list | sort -u); do okpkg "$k" && pm disable-user --user 0 "$k" >/dev/null 2>&1; done; }
+unblock() { rm -f "$D/block.on"; for k in $(stock_list | sort -u); do okpkg "$k" && pm enable "$k" >/dev/null 2>&1; done; }
+probe() {
+  dumpsys window windows 2>/dev/null | awk '
+    /Window #/ { if (pkg != "" && disp != "") print disp, pkg; pkg = ""; disp = "" }
+    { for (i = 1; i <= NF; i++) {
+        if ($i ~ /^mDisplayId=/) { split($i, a, "="); disp = a[2] }
+        if ($i ~ /^package=/) { split($i, b, "="); pkg = b[2] } } }
+    END { if (pkg != "" && disp != "") print disp, pkg }' | sort -u > "$D/probe.tmp"
+  ps -A -o NAME 2>/dev/null | grep -iE "odin|ayn|tcc|dual" | sed 's/^/proc /' >> "$D/probe.tmp"
+  mv "$D/probe.tmp" "$D/probe_$1.txt"; own "$D/probe_$1.txt"
+}
 thaw() { rm -f "$D/freeze.on"; for p in $(stock_pids); do kill -CONT "$p" 2>/dev/null; done; }
 freeze() { touch "$D/freeze.on"; for p in $(stock_pids); do kill -STOP "$p" 2>/dev/null; done; }
 keep_frozen() { [ -f "$D/freeze.on" ] && for p in $(stock_pids); do kill -STOP "$p" 2>/dev/null; done; }
 
 cleanup() {
   for p in $(stock_pids); do kill -CONT "$p" 2>/dev/null; done
+  [ -f "$D/block.on" ] && unblock
   fx_stop
   [ -n "$KW" ] && kill "$KW" 2>/dev/null
   pkill -f "getevent -ql" 2>/dev/null
@@ -174,6 +190,11 @@ run() {
       FXP=$!;;
     fxoff) fx_stop;;
     diag) diag;;
+    probe) case "$a" in 1|2) probe "$a";; esac;;
+    stockadd) okpkg "$a" && { grep -qx "$a" "$D/stock.list" 2>/dev/null || echo "$a" >> "$D/stock.list"; } && [ -f "$D/freeze.on" ] && freeze;;
+    stockclear) rm -f "$D/stock.list";;
+    block) block;;
+    unblock) unblock;;
     snap)
       case "$a" in 1|2) ;; *) return;; esac
       { settings list system | sed 's/^/system:/'

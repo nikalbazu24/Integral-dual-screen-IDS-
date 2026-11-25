@@ -67,7 +67,9 @@ class PanelService : Service() {
         registerReceiver(screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON)
         })
+        Store.settings.value.stockPackages.forEach { Helper.send("stockadd $it") }
         if (Store.settings.value.replaceStock) Helper.send("freeze")
+        if (Store.settings.value.blockStock) Helper.send("block")
         lastKeyStamp = Helper.lastKey()?.second
         Device.applyLeds()
         Helper.send("diag")
@@ -109,6 +111,8 @@ class PanelService : Service() {
                         Store.toast("Botón guardado: ${k.first}")
                     } else if (k.first == Store.settings.value.aynKey && k.first.isNotBlank()) {
                         toggle()
+                        val st = Store.settings.value
+                        if (st.replaceStock || st.blockStock || Store.detectingStock.value) detectStock()
                     }
                 }
                 delay(120)
@@ -140,7 +144,44 @@ class PanelService : Service() {
         }
     }
 
+    private var lastBaseline = 0L
+
+    /** Mira qué ventanas aparecieron justo después del botón AYN: esas son del panel de fábrica. */
+    private fun detectStock() {
+        scope.launch {
+            delay(700)
+            Helper.send("probe 2")
+            var waited = 0
+            while (Helper.probeAge(2) > 2500 && waited < 4000) { delay(250); waited += 250 }
+            val before = withContext(Dispatchers.IO) { Helper.readProbe(1) }.toSet()
+            val after = withContext(Dispatchers.IO) { Helper.readProbe(2) }
+            val skip = setOf(packageName, "android", "com.android.systemui")
+            val keywords = Regex("odin|ayn|tcc|dualscreen", RegexOption.IGNORE_CASE)
+            val found = after.filter { (d, pkg) ->
+                d != "proc" && pkg !in skip && d != "0" && ((d to pkg) !in before || keywords.containsMatchIn(pkg))
+            }.map { it.second } + after.filter { it.first == "proc" && keywords.containsMatchIn(it.second) }.map { it.second.substringBefore(':') }
+            val fresh = found.distinct().filter { it !in Store.settings.value.stockPackages && Regex("^[a-zA-Z0-9._]+$").matches(it) }
+            if (fresh.isNotEmpty()) {
+                Store.update { it.copy(stockPackages = (it.stockPackages + fresh).distinct()) }
+                fresh.forEach { Helper.send("stockadd $it") }
+                if (Store.settings.value.replaceStock) Helper.send("freeze")
+                if (Store.settings.value.blockStock) Helper.send("block")
+                Store.log("Panel de AYN detectado: ${fresh.joinToString()}", "AYN")
+            }
+            if (Store.detectingStock.value) {
+                Store.detectingStock.value = false
+                Store.toast(if (fresh.isEmpty()) "No apareció nada nuevo. Prueba otra vez." else "Detectado: ${fresh.joinToString()}")
+            }
+            Helper.send("probe 1")
+        }
+    }
+
     private fun refreshTelemetry() {
+        val st0 = Store.settings.value
+        if ((st0.replaceStock || st0.blockStock || Store.detectingStock.value) && !Store.panelVisible.value &&
+            System.currentTimeMillis() - lastBaseline > 15_000) {
+            lastBaseline = System.currentTimeMillis(); Helper.send("probe 1")
+        }
         Helper.ensureRunning()
         val m = Helper.readTelemetry()
         val bm = getSystemService(BatteryManager::class.java)
