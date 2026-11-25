@@ -1,0 +1,82 @@
+name: Compilar y publicar
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Descargar letras (Google Fonts, licencia OFL)
+        run: |
+          mkdir -p app/src/main/res/font
+          base=https://raw.githubusercontent.com/google/fonts/main/ofl
+          dl() { curl -fsSL "$1" -o "app/src/main/res/font/$2" || echo "No se pudo bajar $2"; }
+          dl "$base/nunito/Nunito%5Bwght%5D.ttf" nunito.ttf
+          dl "$base/inter/Inter%5Bopsz,wght%5D.ttf" inter.ttf
+          dl "$base/outfit/Outfit%5Bwght%5D.ttf" outfit.ttf
+          dl "$base/lexend/Lexend%5Bwght%5D.ttf" lexend.ttf
+          dl "$base/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf" spacegrotesk.ttf
+          dl "$base/atkinsonhyperlegible/AtkinsonHyperlegible-Regular.ttf" atkinson_regular.ttf
+          dl "$base/atkinsonhyperlegible/AtkinsonHyperlegible-Bold.ttf" atkinson_bold.ttf
+          find app/src/main/res/font -size 0 -delete
+          ls -la app/src/main/res/font
+
+      - name: Llave de firma estable (caché)
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: ids-debug-keystore-v1
+
+      - name: Llave de firma propia (si está en los secretos)
+        env:
+          KS_B64: ${{ secrets.IDS_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/ids.jks"
+            echo "IDS_KEYSTORE_FILE=$RUNNER_TEMP/ids.jks" >> "$GITHUB_ENV"
+          fi
+
+      - name: Compilar APK
+        env:
+          IDS_REPORT_URL: ${{ secrets.IDS_REPORT_URL }}
+          IDS_KEYSTORE_PASSWORD: ${{ secrets.IDS_KEYSTORE_PASSWORD }}
+          IDS_KEY_ALIAS: ${{ secrets.IDS_KEY_ALIAS }}
+          IDS_KEY_PASSWORD: ${{ secrets.IDS_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Preparar archivo
+        id: apk
+        run: |
+          V="0.1.${{ github.run_number }}"
+          cp app/build/outputs/apk/release/app-release.apk "IDS-v$V.apk"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Publicar en Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.apk.outputs.version }}
+          name: Integral Dual Screen v${{ steps.apk.outputs.version }}
+          body: |
+            Versión automática desde `${{ github.sha }}`.
+            ${{ github.event.head_commit.message }}
+          files: IDS-v${{ steps.apk.outputs.version }}.apk
+          make_latest: true
