@@ -93,6 +93,13 @@ class PanelService : Service() {
         return START_STICKY
     }
 
+    /** Al cerrar IDS desde recientes el servicio sigue vivo; si el sistema lo mata, se vuelve a levantar. */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        runCatching { startForegroundService(Intent(this, PanelService::class.java)) }
+    }
+
+
     private fun show() {
         if (!SysSettings.canDrawOverlays(this)) { Store.toast("Falta el permiso para mostrarse sobre otras apps"); return }
         runCatching { host?.show() }.onFailure { ErrorReporter.report("PanelService.show", it) }
