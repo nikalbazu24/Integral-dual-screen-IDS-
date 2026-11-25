@@ -13,7 +13,7 @@ import java.util.concurrent.Executors
 data class GameProfile(
     val hz: String = "120 Hz",
     val perf: String = "Equilibrado",
-    val fan: String = "Auto",
+    val fan: String = "Inteligente",
     val ct: String = "Ninguno",
     val fps: Int = 60,
     val pane: String = "Inicio",
@@ -30,8 +30,10 @@ data class Settings(
     val mode: String = "Dos",
     val hz: String = "120 Hz",
     val perf: String = "Equilibrado",
-    val fan: String = "Auto",
+    val fan: String = "Inteligente",
     val ct: String = "Stock",
+    /** Brillo: mover las dos pantallas juntas con la barra general. */
+    val brightLinked: Boolean = true,
     val caps: Map<String, Int> = Freq.STOCK,
     val ctOwner: String = "Esta app",
     val autoTune: Boolean = false,
@@ -131,6 +133,8 @@ object Store {
     /** Botón de AYN que se está aprendiendo ahora mismo (null = ninguno). */
     val learningSetting = MutableStateFlow<String?>(null)
     val detectingStock = MutableStateFlow(false)
+    /** Modo que eligió el ventilador inteligente ahora mismo ("" si no está en Inteligente). */
+    val fanNow = MutableStateFlow("")
 
     fun init(ctx: Context) {
         appContext = ctx.applicationContext
@@ -175,7 +179,7 @@ object Store {
     private fun encode(s: Settings): JSONObject = JSONObject().apply {
         put("design", s.design); put("palette", s.palette); put("font", s.font); put("size", s.size)
         put("techNumbers", s.techNumbers); put("widgets", JSONArray(s.widgets.toList()))
-        put("mode", s.mode); put("hz", s.hz); put("perf", s.perf); put("fan", s.fan); put("ct", s.ct)
+        put("mode", s.mode); put("hz", s.hz); put("perf", s.perf); put("fan2", s.fan); put("brightLinked", s.brightLinked); put("ct", s.ct)
         put("caps", JSONObject(s.caps as Map<*, *>)); put("ctOwner", s.ctOwner); put("autoTune", s.autoTune)
         put("automation", JSONArray(s.automation.toList())); put("toggles", JSONArray(s.toggles.toList()))
         put("ledL", s.ledL); put("ledR", s.ledR); put("ledSame", s.ledSame); put("effect", s.effect)
@@ -206,7 +210,7 @@ object Store {
         val games = o.optJSONObject("games")?.let { g ->
             g.keys().asSequence().associateWith { k ->
                 val p = g.getJSONObject(k)
-                GameProfile(p.optString("hz", "120 Hz"), p.optString("perf", "Equilibrado"), p.optString("fan", "Auto"),
+                GameProfile(p.optString("hz", "120 Hz"), p.optString("perf", "Equilibrado"), p.optString("fan", "Inteligente"),
                     p.optString("ct", "Ninguno"), p.optInt("fps", 60), p.optString("pane", "Inicio"))
             }
         } ?: emptyMap()
@@ -223,7 +227,7 @@ object Store {
             techNumbers = o.optBoolean("techNumbers", d.techNumbers),
             widgets = o.strings("widgets")?.toSet() ?: d.widgets,
             mode = o.optString("mode", d.mode), hz = o.optString("hz", d.hz), perf = o.optString("perf", d.perf),
-            fan = o.optString("fan", d.fan), ct = o.optString("ct", d.ct), caps = caps,
+            fan = o.optString("fan2", d.fan), brightLinked = o.optBoolean("brightLinked", d.brightLinked), ct = o.optString("ct", d.ct), caps = caps,
             ctOwner = o.optString("ctOwner", d.ctOwner), autoTune = o.optBoolean("autoTune", d.autoTune),
             automation = o.strings("automation")?.toSet() ?: d.automation,
             toggles = o.strings("toggles")?.toSet() ?: d.toggles,

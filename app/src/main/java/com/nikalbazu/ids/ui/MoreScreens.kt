@@ -254,7 +254,12 @@ fun HardwareScreen() {
                     }
                 }
                 Row(Modifier.fillMaxWidth().card(t).padding(16.dp)) {
-                    SegRow(listOf("Silencio", "Auto", "Máx", "Personalizado"), s.fan, height = 64.dp, size = 19.sp) { Device.setFan(it) }
+                    SegRow(listOf("Silencio", "Auto", "Inteligente", "Máx", "Personalizado"), s.fan, height = 64.dp, size = 18.sp) { Device.setFan(it) }
+                }
+                if (s.fan == "Inteligente") {
+                    val now by Store.fanNow.collectAsState()
+                    T("Inteligente: la app cambia sola el ventilador según la temperatura del chip. Bajo 55 °C va en Silencio, " +
+                        "de 55 a 70 °C en Auto y sobre 70 °C en Máx. Ahora: " + now.ifBlank { "leyendo…" }, 17.sp, FontWeight.Bold, t.mu, maxLines = 3)
                 }
                 Card {
                     val custom = s.fan == "Personalizado"
@@ -381,7 +386,7 @@ fun JuegosScreen() {
                     T("Rendimiento", 16.sp, FontWeight.ExtraBold, t.mu)
                     SegRow(listOf("Ahorro", "Equilibrado", "Rendimiento"), p.perf, height = 48.dp, size = 16.sp) { o -> set { it.copy(perf = o) } }
                     T("Ventilador", 16.sp, FontWeight.ExtraBold, t.mu)
-                    SegRow(listOf("Silencio", "Auto", "Máx"), p.fan, height = 48.dp, size = 16.sp) { o -> set { it.copy(fan = o) } }
+                    SegRow(listOf("Silencio", "Inteligente", "Máx"), p.fan, height = 48.dp, size = 16.sp) { o -> set { it.copy(fan = o) } }
                     T("Pantalla de abajo al jugar", 16.sp, FontWeight.ExtraBold, t.mu)
                     SegRow(listOf("Inicio", "Herramientas", "Táctil"), p.pane, height = 48.dp, size = 16.sp) { o -> set { it.copy(pane = o) } }
                     T("CPU/GPU de este juego: ${p.ct} (se cambia en ClusterTune › Por juego)", 16.sp, FontWeight.Bold, t.mu)

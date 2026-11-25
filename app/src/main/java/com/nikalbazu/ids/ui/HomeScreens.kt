@@ -1,7 +1,16 @@
 package com.nikalbazu.ids.ui
 
+import android.media.AudioManager
 import android.view.KeyEvent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,8 +19,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.nikalbazu.ids.core.Freq
@@ -38,25 +49,146 @@ fun stats(t: Tele): List<Stat> {
     )
 }
 
+/** Colores de temperatura: frío azul, normal verde, caliente naranjo, muy caliente rojo. */
+fun tempColor(c: Float): Color = when {
+    c <= 0f -> Color(0xFF8A8792)
+    c < 35f -> Color(0xFF5AB4F0)
+    c < 55f -> Color(0xFF5CD68A)
+    c < 70f -> Color(0xFFF5A04A)
+    else -> Color(0xFFF0605A)
+}
+
+fun tempState(c: Float): String = when {
+    c <= 0f -> "Leyendo…"
+    c < 35f -> "Fría · bajo 35 °C"
+    c < 55f -> "Normal · 35 a 55 °C"
+    c < 70f -> "Caliente · 55 a 70 °C"
+    else -> "Muy caliente · sobre 70 °C"
+}
+
 @Composable
 fun InicioScreen() {
     val s by Store.settings.collectAsState()
     val w = s.widgets
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        if ("now" in w) NowStrip()
-        if ("temp" in w || "consola" in w) Row(Modifier.height(330.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            if ("temp" in w) TempCard(Modifier.weight(1f).fillMaxHeight())
-            if ("consola" in w) ConsolaCard(Modifier.weight(1f).fillMaxHeight())
+    var pop by remember { mutableStateOf<String?>(null) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val full = maxHeight
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            Column(Modifier.fillMaxWidth().height(full), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if ("sliders" in w) BrightBar { pop = "brillo" }
+                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        if ("temp" in w || "consola" in w) Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            if ("temp" in w) TempCard(Modifier.weight(1f).fillMaxHeight())
+                            if ("consola" in w) ConsolaCard(Modifier.weight(1.15f).fillMaxHeight())
+                        }
+                        if ("ct" in w) CtCard(Modifier.fillMaxWidth().height(250.dp))
+                    }
+                    if ("sliders" in w) VolumeBar { pop = "volumen" }
+                }
+                if ("stats" in w) StatsStrip()
+            }
+            if ("now" in w) NowStrip()
+            if ("hw" in w) HwShortcuts()
+            if ("quick" in w || "music" in w) Row(Modifier.height(140.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                if ("quick" in w) QuickRow(Modifier.weight(3f).fillMaxHeight())
+                if ("music" in w) MusicCard(Modifier.weight(1f).fillMaxHeight())
+            }
         }
-        if ("ct" in w || "stats" in w) Row(Modifier.height(330.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            if ("ct" in w) CtCard(Modifier.weight(1f).fillMaxHeight())
-            if ("stats" in w) StatsGrid(Modifier.weight(1f).fillMaxHeight())
+        AnimatedVisibility(pop != null, enter = fadeIn() + scaleIn(initialScale = 0.94f), exit = fadeOut() + scaleOut(targetScale = 0.94f)) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).tap { pop = null }, contentAlignment = Alignment.Center) {
+                when (pop) {
+                    "brillo" -> BrightPopup { pop = null }
+                    "volumen" -> VolumePopup { pop = null }
+                    else -> {}
+                }
+            }
         }
-        if ("sliders" in w) SlidersCard()
-        if ("hw" in w) HwShortcuts()
-        if ("quick" in w || "music" in w) Row(Modifier.height(140.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            if ("quick" in w) QuickRow(Modifier.weight(3f).fillMaxHeight())
-            if ("music" in w) MusicCard(Modifier.weight(1f).fillMaxHeight())
+    }
+}
+
+/** Columna lateral: título, barra que se desliza y botón "Por pantalla". */
+@Composable
+private fun SideBar(title: String, value: Int, fill: Color, width: Dp, onSlide: (Float) -> Unit, onRelease: () -> Unit, onOpen: () -> Unit) {
+    val t = LocalTok.current
+    Column(Modifier.width(width).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        T(title, 17.sp, FontWeight.Black, maxLines = 1)
+        VBar("$value", value / 100f, fill, Modifier.weight(1f).fillMaxWidth(), onSlide, onRelease)
+        Pill("Por pantalla", false, Modifier.fillMaxWidth(), 56.dp, 14.sp, onOpen)
+    }
+}
+
+@Composable
+private fun BrightBar(onOpen: () -> Unit) {
+    val t = LocalTok.current
+    var v by remember { mutableIntStateOf(Device.topBrightness()) }
+    SideBar("Brillo", v, t.v[4].copy(alpha = 0.4f), 82.dp,
+        onSlide = { v = (it * 100).toInt().coerceIn(1, 100) },
+        onRelease = {
+            Device.setTopBrightness(v)
+            if (Store.settings.value.brightLinked) Device.setBottomBrightness(v)
+        }, onOpen = onOpen)
+}
+
+@Composable
+private fun VolumeBar(onOpen: () -> Unit) {
+    val t = LocalTok.current
+    var v by remember { mutableIntStateOf(Device.volume()) }
+    SideBar("Volumen", v, t.v[2].copy(alpha = 0.4f), 80.dp,
+        onSlide = { val n = (it * 100).toInt(); if (n != v) { v = n; Device.setVolume(n) } },
+        onRelease = {}, onOpen = onOpen)
+}
+
+/** Ventanita con barras por pantalla o por tipo de sonido. */
+@Composable
+private fun PopupFrame(title: String, hint: String, onClose: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val t = LocalTok.current
+    Column(Modifier.width(620.dp).card(t, null, 36.dp).tap { }.padding(horizontal = 28.dp, vertical = 26.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            T(title, 26.sp, FontWeight.Black, modifier = Modifier.weight(1f))
+            Pill("✕", false, Modifier.width(52.dp), 52.dp, 20.sp, onClose)
+        }
+        T(hint, 16.sp, FontWeight.Bold, t.mu, maxLines = 2)
+        content()
+    }
+}
+
+@Composable
+private fun PopBar(name: String, value: Int, fill: Color, onSlide: (Float) -> Unit, onRelease: () -> Unit) {
+    Column(Modifier.width(130.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        VBar("$value", value / 100f, fill, Modifier.fillMaxWidth().height(300.dp), onSlide, onRelease)
+        T(name, 16.sp, FontWeight.Black, maxLines = 1)
+    }
+}
+
+@Composable
+private fun BrightPopup(onClose: () -> Unit) {
+    val t = LocalTok.current
+    val s by Store.settings.collectAsState()
+    var top by remember { mutableIntStateOf(Device.topBrightness()) }
+    var bottom by remember { mutableIntStateOf(Device.bottomPct) }
+    PopupFrame("Brillo por pantalla", "La barra del costado mueve " + (if (s.brightLinked) "las dos pantallas juntas." else "solo la pantalla de arriba."), onClose) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterHorizontally)) {
+            PopBar("Pantalla arriba", top, t.v[4].copy(alpha = 0.45f), { top = (it * 100).toInt().coerceIn(1, 100) }) { Device.setTopBrightness(top) }
+            PopBar("Pantalla abajo", bottom, t.v[4].copy(alpha = 0.45f), { bottom = (it * 100).toInt().coerceIn(1, 100) }) { Device.setBottomBrightness(bottom) }
+        }
+        Pill(if (s.brightLinked) "Mover juntas: sí" else "Mover juntas: no", s.brightLinked, Modifier.fillMaxWidth(), 54.dp, 16.sp) {
+            Store.update { it.copy(brightLinked = !it.brightLinked) }
+        }
+    }
+}
+
+@Composable
+private fun VolumePopup(onClose: () -> Unit) {
+    val t = LocalTok.current
+    val streams = listOf("Multimedia" to AudioManager.STREAM_MUSIC, "Notificaciones" to AudioManager.STREAM_NOTIFICATION, "Sistema" to AudioManager.STREAM_SYSTEM)
+    PopupFrame("Volumen por tipo de sonido", "La consola tiene un solo parlante: aquí ajustas cada tipo de sonido por separado.", onClose) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(22.dp, Alignment.CenterHorizontally)) {
+            streams.forEachIndexed { i, (name, st) ->
+                var v by remember { mutableIntStateOf(Device.volume(st)) }
+                PopBar(name, v, t.v[listOf(2, 3, 1)[i]].copy(alpha = 0.45f), { val n = (it * 100).toInt(); if (n != v) { v = n; Device.setVolume(n, st) } }) {}
+            }
         }
     }
 }
@@ -84,38 +216,49 @@ private fun TempCard(modifier: Modifier) {
     val t = LocalTok.current
     val tele by Store.tele.collectAsState()
     val s by Store.settings.collectAsState()
+    val fanNow by Store.fanNow.collectAsState()
     val c = tele.socC ?: 0f
-    val state = when { c <= 0f -> "Leyendo…"; c < 55 -> "Normal · bajo 55 °C"; c < 70 -> "Tibia"; else -> "Caliente" }
-    val color = when { c < 55 -> t.v[1]; c < 70 -> t.v[4]; else -> t.v[0] }
-    Row(modifier.card(t, 4).padding(horizontal = 26.dp, vertical = 22.dp), verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        Ring(deg(tele.socC), "chip", c / 90f, color, 220.dp, 12.dp, 64.sp, 18.sp)
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            T("Temperatura", 24.sp, FontWeight.Black)
-            Box(Modifier.clip(RoundedCornerShape(18.dp)).background(t.track).padding(horizontal = 14.dp, vertical = 7.dp)) {
-                T("●  $state", 16.sp, FontWeight.Black, color)
-            }
+    val color by animateColorAsState(tempColor(c), tween(600), label = "temp")
+    val shape = RoundedCornerShape(36.dp)
+    val fanText = (tele.fanRpm?.let { "$it rpm · " } ?: "") + if (s.fan == "Inteligente" && fanNow.isNotBlank()) "Inteligente ($fanNow)" else s.fan
+    Column(
+        modifier.card(t, null, 36.dp).background(color.copy(alpha = 0.10f), shape).border(1.5.dp, color.copy(alpha = 0.55f), shape)
+            .tap { Store.nav { it.copy(sec = "hw", hwTab = "fan") } }.padding(horizontal = 22.dp, vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
+    ) {
+        Ring(deg(tele.socC), "chip", c / 90f, color, 230.dp, 14.dp, 66.sp, 18.sp)
+        Box(Modifier.height(34.dp).clip(RoundedCornerShape(17.dp)).background(t.track).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+            T("●  " + tempState(c), 15.sp, FontWeight.Black, color, maxLines = 1)
+        }
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf(
                 "Batería" to (tele.batteryC?.let { "${it.toInt()} °C" } ?: "—"),
-                "Ventilador" to ((tele.fanRpm?.let { "$it rpm · " } ?: "") + s.fan),
+                "Ventilador" to fanText,
                 "Máxima hoy" to (if (tele.maxTodayC > 0) "${tele.maxTodayC.toInt()} °C" else "—"),
             ).forEach { (k, v) ->
-                Row { T(k, 18.sp, FontWeight.Bold, t.mu, Modifier.weight(1f)); T(v, 18.sp, FontWeight.Black) }
+                Row { T(k, 16.sp, FontWeight.Bold, t.mu, Modifier.weight(1f)); T(v, 16.sp, FontWeight.Black, maxLines = 1) }
             }
-            Pill("Ventilador ›", true, Modifier.fillMaxWidth(), 46.dp, 16.sp) { Store.nav { it.copy(sec = "hw", hwTab = "fan") } }
         }
     }
 }
 
 @Composable
 private fun ConsolaCard(modifier: Modifier) {
+    val t = LocalTok.current
     val s by Store.settings.collectAsState()
-    Card(modifier, gap = 10.dp) {
+    Column(modifier.card(t, null, 36.dp).padding(horizontal = 22.dp, vertical = 20.dp), verticalArrangement = Arrangement.SpaceBetween) {
         T("Consola", 22.sp, FontWeight.Black)
-        LabeledSeg("Pantallas", listOf("Dos", "Arriba", "Abajo"), s.mode, 118.dp, 56.dp) { Device.setScreens(it) }
-        LabeledSeg("Refresco", listOf("60 Hz", "120 Hz"), s.hz, 118.dp, 56.dp) { Device.setHz(it) }
-        LabeledSeg("Rendimiento", listOf("Ahorro", "Equilibrado", "Rendimiento"), s.perf, 118.dp, 56.dp) { Device.setPerf(it) }
-        LabeledSeg("Ventilador", listOf("Silencio", "Auto", "Máx"), s.fan, 118.dp, 56.dp) { Device.setFan(it) }
+        listOf(
+            Triple("Pantallas", listOf("Dos", "Arriba", "Abajo"), s.mode) to { o: String -> Device.setScreens(o) },
+            Triple("Refresco", listOf("60 Hz", "120 Hz"), s.hz) to { o: String -> Device.setHz(o) },
+            Triple("Rendimiento", listOf("Ahorro", "Equilibrado", "Rendimiento"), s.perf) to { o: String -> Device.setPerf(o) },
+            Triple("Ventilador", listOf("Silencio", "Inteligente", "Máx"), s.fan) to { o: String -> Device.setFan(o) },
+        ).forEach { (row, pick) ->
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                T(row.first, 15.sp, FontWeight.ExtraBold, t.mu)
+                SegRow(row.second, row.third, Modifier.fillMaxWidth(), 56.dp, 15.sp, pick)
+            }
+        }
     }
 }
 
@@ -123,39 +266,59 @@ private fun ConsolaCard(modifier: Modifier) {
 private fun CtCard(modifier: Modifier) {
     val t = LocalTok.current
     val s by Store.settings.collectAsState()
-    Card(modifier, accent = 3, gap = 8.dp) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            T("ClusterTune", 22.sp, FontWeight.Black, modifier = Modifier.weight(1f))
-            Pill("Abrir ›", true, height = 44.dp, size = 16.sp) { Store.nav { it.copy(sec = "ct") } }
-        }
-        T(s.ct, 34.sp, FontWeight.Black, maxLines = 1)
-        Row(horizontalArrangement = Arrangement.spacedBy(22.dp), verticalAlignment = Alignment.CenterVertically) {
-            val p = s.caps["p"] ?: Freq.STOCK.getValue("p"); val g = s.caps["gpu"] ?: Freq.STOCK.getValue("gpu")
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Ring(ghz(p), "GHz", p / 3187200f, t.v[3], 74.dp, 10.dp, 18.sp, 11.sp); T("Tope\nCPU", 15.sp, FontWeight.ExtraBold)
+    val p = s.caps["p"] ?: Freq.STOCK.getValue("p"); val g = s.caps["gpu"] ?: Freq.STOCK.getValue("gpu")
+    val own = s.ctOwner == "Esta app"
+    Column(modifier.card(t, 3, 36.dp).padding(horizontal = 24.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                T("ClusterTune · perfil activo", 16.sp, FontWeight.ExtraBold, t.mu, maxLines = 1)
+                T(s.ct, 34.sp, FontWeight.Black, maxLines = 1)
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Ring("${g / 1_000_000}", "MHz", g / 680_000_000f, t.v[2], 74.dp, 10.dp, 18.sp, 11.sp); T("Tope\nGPU", 15.sp, FontWeight.ExtraBold)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(listOf("Stock", "Batería"), listOf("Silencioso", "Equilibrado")).forEach { pair ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        pair.forEach { n -> Pill(n, s.ct == n, Modifier.width(140.dp), 42.dp, 16.sp) { Device.applyCaps(n) } }
+                    }
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Pill("Más ajustes ›", true, Modifier.width(200.dp), 42.dp, 15.sp) { Store.nav { it.copy(sec = "ct") } }
+                Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                    Ring(ghz(p), "GHz · CPU", p / 3187200f, t.v[3], 100.dp, 11.dp, 22.sp, 11.sp)
+                    Ring("${g / 1_000_000}", "MHz · GPU", g / 680_000_000f, t.v[2], 100.dp, 11.dp, 22.sp, 11.sp)
+                }
             }
         }
-        SegRow(listOf("Stock", "Batería", "Silencioso", "Equilibrado"), s.ct, height = 50.dp, size = 15.sp) { Device.applyCaps(it) }
-        T(if (s.ctOwner == "Esta app") "Auto Tune: " + (if (s.autoTune) "activo" else "apagado") else "Controlado por la app ClusterTune", 17.sp, FontWeight.Bold)
+        Row(Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(19.dp)).background(t.track),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+            T("●  ", 15.sp, FontWeight.Black, if (own && s.autoTune) t.v[1] else t.mu)
+            T("Auto Tune · " + when {
+                !own -> "lo controla la app ClusterTune"
+                s.autoTune -> "activo, ajusta los topes según el juego"
+                else -> "apagado"
+            }, 15.sp, FontWeight.ExtraBold, maxLines = 1)
+        }
     }
 }
 
+/** Franja horizontal pequeña: CPU, GPU, RAM y consumo. */
 @Composable
-private fun StatsGrid(modifier: Modifier) {
+private fun StatsStrip() {
     val t = LocalTok.current
     val tele by Store.tele.collectAsState()
     val list = stats(tele)
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        for (r in 0..1) Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            for (c in 0..1) {
-                val st = list[r * 2 + c]
-                Row(Modifier.weight(1f).fillMaxHeight().card(t, st.color, 30.dp).padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Ring(st.value, st.unit, st.fraction, t.v[st.color], 98.dp, 12.dp, 22.sp, 13.sp, t.track)
-                    Column { T(st.label, 20.sp, FontWeight.Black); T(st.detail, 14.sp, FontWeight.Bold, t.mu) }
+    Row(Modifier.fillMaxWidth().height(92.dp).card(t, null, 30.dp).padding(horizontal = 22.dp),
+        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        list.forEach { st ->
+            Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Ring("", "", st.fraction, t.v[st.color], 62.dp, 8.dp, track = t.track)
+                Column {
+                    T(st.label, 14.sp, FontWeight.ExtraBold, t.mu, maxLines = 1)
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        T(st.value, 22.sp, FontWeight.Black, num = true, maxLines = 1)
+                        T(" " + st.unit, 14.sp, FontWeight.ExtraBold, t.mu, maxLines = 1)
+                    }
                 }
             }
         }

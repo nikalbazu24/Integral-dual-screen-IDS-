@@ -25,7 +25,37 @@ object Device {
 
     fun setFan(mode: String) {
         Store.update { it.copy(fan = mode) }
-        FAN[mode]?.let { Helper.send("fan $it") }
+        if (mode == "Inteligente") { smartLevel = -1; smartTick(Store.tele.value.socC) }
+        else { Store.fanNow.value = ""; FAN[mode]?.let { Helper.send("fan $it") } }
+    }
+
+    // ---- Ventilador inteligente: sube solo cuando el chip se calienta ----
+    // Nivel 0 = Silencio (bajo 55 °C), 1 = Auto (55–70 °C), 2 = Máx (sobre 70 °C).
+    // Sube al instante; baja solo si se enfrió 4 °C bajo el umbral durante 20 s (para que no "bombee").
+    private val SMART = listOf("Silencio" to 1, "Auto" to 4, "Máx" to 5)
+    private var smartLevel = -1
+    private var coolSince = 0L
+
+    fun smartTick(c: Float?) {
+        if (Store.settings.value.fan != "Inteligente" || c == null || c <= 0f) return
+        val want = when { c >= 70f -> 2; c >= 55f -> 1; else -> 0 }
+        val now = System.currentTimeMillis()
+        val next = when {
+            smartLevel < 0 || want > smartLevel -> { coolSince = 0L; want }
+            want < smartLevel -> {
+                val limit = if (smartLevel == 2) 66f else 51f
+                if (c > limit) { coolSince = 0L; smartLevel }
+                else { if (coolSince == 0L) coolSince = now; if (now - coolSince >= 20_000) { coolSince = 0L; smartLevel - 1 } else smartLevel }
+            }
+            else -> { coolSince = 0L; smartLevel }
+        }
+        if (next != smartLevel) {
+            val first = smartLevel < 0
+            smartLevel = next
+            Helper.send("fan ${SMART[next].second}")
+            if (!first) Store.log("Chip a ${c.toInt()} °C → ventilador en ${SMART[next].first}", "Ventilador")
+        }
+        Store.fanNow.value = SMART[smartLevel].first
     }
 
     fun setPerf(mode: String) {
@@ -45,7 +75,7 @@ object Device {
         val perf = SysSettings.System.getString(r, "performance_mode")?.toIntOrNull()
         Store.update { s ->
             s.copy(
-                fan = FAN.entries.firstOrNull { it.value == fan }?.key ?: s.fan,
+                fan = if (s.fan == "Inteligente") s.fan else FAN.entries.firstOrNull { it.value == fan }?.key ?: s.fan,
                 perf = when (perf) { 0 -> "Ahorro"; 1 -> "Equilibrado"; 2 -> "Rendimiento"; else -> s.perf },
             )
         }
@@ -66,16 +96,16 @@ object Device {
     }
     var bottomPct = 50; private set
 
-    fun volume(): Int {
+    fun volume(stream: Int = AudioManager.STREAM_MUSIC): Int = runCatching {
         val am = ctx.getSystemService(AudioManager::class.java)
-        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-        return am.getStreamVolume(AudioManager.STREAM_MUSIC) * 100 / max
-    }
+        val max = am.getStreamMaxVolume(stream).coerceAtLeast(1)
+        am.getStreamVolume(stream) * 100 / max
+    }.getOrDefault(50)
 
-    fun setVolume(pct: Int) = runCatching {
+    fun setVolume(pct: Int, stream: Int = AudioManager.STREAM_MUSIC) = runCatching {
         val am = ctx.getSystemService(AudioManager::class.java)
-        val max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        am.setStreamVolume(AudioManager.STREAM_MUSIC, (pct.coerceIn(0, 100) * max) / 100, 0)
+        val max = am.getStreamMaxVolume(stream)
+        am.setStreamVolume(stream, (pct.coerceIn(0, 100) * max + 50) / 100, 0)
     }
 
     // ---- Modos de pantalla ----

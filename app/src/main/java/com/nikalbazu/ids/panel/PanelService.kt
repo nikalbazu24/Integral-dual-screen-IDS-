@@ -124,6 +124,7 @@ class PanelService : Service() {
                 runCatching { withContext(Dispatchers.IO) { refreshTelemetry() } }
                     .onFailure { ErrorReporter.report("telemetría", it) }
                 tickTimer()
+                Device.smartTick(Store.tele.value.socC)
                 ledTick++
                 val fx = Store.settings.value.effect
                 if ((fx == "Según temperatura" && ledTick % 5 == 0) || (fx == "Según batería" && ledTick % 60 == 0)) Device.applyLeds()
