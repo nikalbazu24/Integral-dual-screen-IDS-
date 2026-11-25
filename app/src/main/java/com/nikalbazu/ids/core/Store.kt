@@ -36,6 +36,10 @@ data class Settings(
     val ct: String = "Stock",
     /** Brillo: mover las dos pantallas juntas con la barra general. */
     val brightLinked: Boolean = true,
+    /** Ocultar el panel de AYN sin dormirlo (recomendado: todo sigue funcionando). */
+    val hideStock: Boolean = true,
+    /** Instalar solo las versiones nuevas. */
+    val autoUpdate: Boolean = true,
     val caps: Map<String, Int> = Freq.STOCK,
     val ctOwner: String = "Auto",
     val autoTune: Boolean = false,
@@ -125,6 +129,10 @@ object Freq {
     )
 }
 
+/** Apps de sistema de AYN que hacen funcionar luces, ventilador, controles, etc.: IDS nunca las duerme ni bloquea. */
+val PROTECTED = setOf("com.odin.settings", "com.odin.gameassistant", "com.odin.mapping", "com.odin.fota", "com.odin.factorytest",
+    "com.odin.odinlauncher", "com.odin.setupwizard", "com.qualcomm.qti.performancemode")
+
 /** Nombres antiguos de botones de AYN → nombres que usa AYN. */
 val RENAMED = mapOf("Bloqueo automático" to "Auto lock", "Alimentación directa" to "Direct power supply")
 
@@ -147,11 +155,22 @@ object Store {
     /** Modo edición del Inicio y bandeja para agregar tarjetas. */
     val editing = MutableStateFlow(false)
     val tray = MutableStateFlow(false)
+    /** Venía de una versión que dormía/bloqueaba el panel de AYN: hay que despertarlo una vez. */
+    var needsThaw = false
 
     fun init(ctx: Context) {
         appContext = ctx.applicationContext
         val raw = prefs().getString("settings", null)
-        if (raw != null) runCatching { settings.value = decode(JSONObject(raw)) }
+        if (raw != null) runCatching {
+            val o = JSONObject(raw)
+            var st = decode(o)
+            if (!o.has("migr1") && (st.replaceStock || st.blockStock || st.permStock)) {
+                // Dormir o bloquear el panel de AYN cortaba las luces y otras funciones: se cambia a "ocultar"
+                st = st.copy(replaceStock = false, blockStock = false, permStock = false, hideStock = true)
+                needsThaw = true
+            }
+            settings.value = st
+        }
         val hist = prefs().getString("history", null)
         if (hist != null) runCatching {
             val arr = JSONArray(hist)
@@ -191,7 +210,7 @@ object Store {
     private fun encode(s: Settings): JSONObject = JSONObject().apply {
         put("design", s.design); put("palette", s.palette); put("font", s.font); put("size", s.size)
         put("techNumbers", s.techNumbers); put("layout", JSONArray().also { a -> s.layout.forEach { t -> a.put(JSONObject().put("id", t.id).put("x", t.x).put("y", t.y).put("w", t.w).put("h", t.h)) } }); put("widgets", JSONArray(s.widgets.toList()))
-        put("mode", s.mode); put("hz", s.hz); put("perf", s.perf); put("fan2", s.fan); put("brightLinked", s.brightLinked); put("ct", s.ct)
+        put("mode", s.mode); put("hz", s.hz); put("perf", s.perf); put("fan2", s.fan); put("brightLinked", s.brightLinked); put("hideStock", s.hideStock); put("autoUpdate", s.autoUpdate); put("migr1", true); put("ct", s.ct)
         put("caps", JSONObject(s.caps as Map<*, *>)); put("ctOwner2", s.ctOwner); put("autoTune", s.autoTune)
         put("automation", JSONArray(s.automation.toList())); put("toggles", JSONArray(s.toggles.toList()))
         put("ledL", s.ledL); put("ledR", s.ledR); put("ledSame", s.ledSame); put("effect", s.effect)
@@ -242,7 +261,7 @@ object Store {
                 Tile(t.optString("id"), t.optInt("x"), t.optInt("y"), t.optInt("w", 1), t.optInt("h", 1)).takeIf { it.id in Grid.INFO && it.inside() } } } }
                 ?.takeIf { it.isNotEmpty() } ?: d.layout,
             mode = o.optString("mode", d.mode), hz = o.optString("hz", d.hz), perf = o.optString("perf", d.perf),
-            fan = o.optString("fan2", d.fan), brightLinked = o.optBoolean("brightLinked", d.brightLinked), ct = o.optString("ct", d.ct), caps = caps,
+            fan = o.optString("fan2", d.fan), brightLinked = o.optBoolean("brightLinked", d.brightLinked), hideStock = o.optBoolean("hideStock", d.hideStock), autoUpdate = o.optBoolean("autoUpdate", d.autoUpdate), ct = o.optString("ct", d.ct), caps = caps,
             ctOwner = o.optString("ctOwner2", d.ctOwner), autoTune = o.optBoolean("autoTune", d.autoTune),
             automation = o.strings("automation")?.toSet() ?: d.automation,
             toggles = o.strings("toggles")?.toSet() ?: d.toggles,

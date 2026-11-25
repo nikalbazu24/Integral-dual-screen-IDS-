@@ -68,9 +68,16 @@ class PanelService : Service() {
         registerReceiver(screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON)
         })
+        // Limpia la lista: antes se colaban apps de sistema de AYN (por eso se cortaban las luces)
+        Store.update { it.copy(stockPackages = it.stockPackages.filter { p -> p !in com.nikalbazu.ids.core.PROTECTED }) }
+        Helper.send("stockclear")
         Store.settings.value.stockPackages.forEach { Helper.send("stockadd $it") }
+        if (Store.needsThaw) { Store.needsThaw = false; Helper.send("thaw", "restoreall"); Store.update { it } }
         if (Store.settings.value.replaceStock) Helper.send("freeze")
         if (Store.settings.value.blockStock) Helper.send("block")
+        Store.settings.value.aynKey.takeIf { it.isNotBlank() }?.let { Helper.send("aynkey $it") }
+        Helper.send("hide " + if (Store.settings.value.hideStock) "on" else "off")
+        com.nikalbazu.ids.core.Updater.check(this)
         lastKeyStamp = Helper.lastKey()?.second
         Device.applyLeds()
         Helper.send("diag")
@@ -110,6 +117,7 @@ class PanelService : Service() {
                     lastKeyStamp = k.second
                     if (Store.learningKey.value) {
                         Store.update { it.copy(aynKey = k.first) }
+                        Helper.send("aynkey ${k.first}")
                         Store.learningKey.value = false
                         Store.toast("Botón guardado: ${k.first}")
                     } else if (Store.learningSetting.value != null) {
@@ -117,7 +125,7 @@ class PanelService : Service() {
                     } else if (k.first == Store.settings.value.aynKey && k.first.isNotBlank()) {
                         toggle()
                         val st = Store.settings.value
-                        if (st.replaceStock || st.blockStock || Store.detectingStock.value) detectStock()
+                        if (st.replaceStock || st.blockStock || st.hideStock || Store.detectingStock.value) detectStock()
                     }
                 }
                 delay(120)
@@ -130,6 +138,8 @@ class PanelService : Service() {
                     .onFailure { ErrorReporter.report("telemetría", it) }
                 tickTimer()
                 Device.smartTick(Store.tele.value.socC)
+                if (ledTick % 600 == 5) com.nikalbazu.ids.core.Updater.check(this@PanelService)
+                if (!Store.panelVisible.value && ledTick % 5 == 0) com.nikalbazu.ids.core.Updater.installIfReady()
                 if (Store.panelVisible.value && ledTick % 2 == 0) Device.refreshStates()
                 ledTick++
                 val fx = Store.settings.value.effect
@@ -162,11 +172,12 @@ class PanelService : Service() {
             while (Helper.probeAge(2) > 2500 && waited < 4000) { delay(250); waited += 250 }
             val before = withContext(Dispatchers.IO) { Helper.readProbe(1) }.toSet()
             val after = withContext(Dispatchers.IO) { Helper.readProbe(2) }
-            val skip = setOf(packageName, "android", "com.android.systemui")
+            // Las apps de sistema de AYN (luces, ventilador, controles…) NUNCA se tocan: solo el panel
+            val skip = setOf(packageName, "android", "com.android.systemui") + com.nikalbazu.ids.core.PROTECTED
             val keywords = Regex("odin|ayn|tcc|dualscreen", RegexOption.IGNORE_CASE)
             val found = after.filter { (d, pkg) ->
                 d != "proc" && pkg !in skip && d != "0" && ((d to pkg) !in before || keywords.containsMatchIn(pkg))
-            }.map { it.second } + after.filter { it.first == "proc" && keywords.containsMatchIn(it.second) }.map { it.second.substringBefore(':') }
+            }.map { it.second }
             val fresh = found.distinct().filter { it !in Store.settings.value.stockPackages && Regex("^[a-zA-Z0-9._]+$").matches(it) }
             if (fresh.isNotEmpty()) {
                 Store.update { it.copy(stockPackages = (it.stockPackages + fresh).distinct()) }

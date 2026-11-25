@@ -110,13 +110,20 @@ private fun Setup() {
                             Store.learningKey.value = !learning
                             Helper.ensureRunning()
                         }
-                        ToggleCard("Dormir el panel de AYN", "Lo pausa mientras IDS esté activo. Si IDS se cierra, vuelve solo.",
+                        ToggleCard("Ocultar el panel de AYN (recomendado)", "Al apretar el botón AYN se cierra el panel de fábrica y queda IDS. La app de AYN sigue andando, así luces, ventilador y todo lo demás funcionan.",
+                            s.hideStock, height = 130.dp) {
+                            val on = !s.hideStock
+                            Store.update { it.copy(hideStock = on) }
+                            Helper.send("hide " + if (on) "on" else "off")
+                        }
+                        T("Opciones avanzadas · cortan funciones de AYN (luces, carga directa y otras) mientras estén activas:", 16.sp, FontWeight.ExtraBold, t.v[0], maxLines = 2)
+                        ToggleCard("Dormir el panel de AYN", "Lo pausa mientras IDS esté activo. Ojo: también pausa luces y otras funciones.",
                             s.replaceStock, height = 120.dp) {
                             val on = !s.replaceStock
                             Store.update { it.copy(replaceStock = on) }
                             Helper.send(if (on) "freeze" else "thaw")
                         }
-                        ToggleCard("Bloqueo total del panel de AYN", "Desactiva la app del panel de fábrica. Se reactiva sola si desinstalas o cierras IDS.",
+                        ToggleCard("Bloqueo total del panel de AYN", "Desactiva la app del panel de fábrica. Ojo: corta luces y otras funciones de AYN.",
                             s.blockStock, height = 120.dp) {
                             val on = !s.blockStock
                             Store.update { it.copy(blockStock = on) }
@@ -212,6 +219,21 @@ private fun Setup() {
                             if (learned != null) Pill("Invertir", false, Modifier.width(140.dp), 48.dp, 16.sp) { Device.invert(name); Store.toast("“$name” invertido") }
                             if (mine != null) Pill("Olvidar", false, Modifier.width(140.dp), 48.dp, 16.sp) { Device.forget(name) }
                         }
+                    }
+                }
+                Card(accent = 2) {
+                    val upd by com.nikalbazu.ids.core.Updater.status.collectAsState()
+                    val official = remember { com.nikalbazu.ids.core.Updater.official(ctx) }
+                    T("Actualizaciones", 24.sp, FontWeight.Black)
+                    T("Versión instalada: v${com.nikalbazu.ids.core.Updater.version()} · " + (if (official) "firma oficial ✓" else "firma de prueba"), 18.sp, FontWeight.Bold)
+                    T(upd, 16.sp, FontWeight.Bold, t.mu, maxLines = 2)
+                    val log = remember(tick) { com.nikalbazu.ids.core.Updater.lastInstallLog() }
+                    if (log.contains("INCOMPATIBLE") || log.contains("SIGNATURE")) T("La versión nueva tiene la firma oficial y esta no: desinstala IDS una vez (antes toca “Devolver el panel de AYN”) e instala la última desde Releases. Desde ahí se actualiza sola.",
+                        16.sp, FontWeight.Bold, t.v[0], maxLines = 4)
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Pill("Buscar ahora", true, Modifier.weight(1f), 56.dp) { com.nikalbazu.ids.core.Updater.check(ctx, force = true) }
+                        Pill((if (s.autoUpdate) "●  " else "○  ") + "Actualizar sola", s.autoUpdate, Modifier.weight(1f), 56.dp) { Store.update { it.copy(autoUpdate = !it.autoUpdate) } }
+                        Pill("Instalar ya", false, Modifier.weight(1f), 56.dp) { com.nikalbazu.ids.core.Updater.installIfReady() }
                     }
                 }
                 Card(accent = 1) {

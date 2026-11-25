@@ -47,10 +47,17 @@ jobs:
       - name: Llave de firma propia (si está en los secretos)
         env:
           KS_B64: ${{ secrets.IDS_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.IDS_KEYSTORE_PASSWORD }}
         run: |
           if [ -n "$KS_B64" ]; then
             echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/ids.jks"
             echo "IDS_KEYSTORE_FILE=$RUNNER_TEMP/ids.jks" >> "$GITHUB_ENV"
+          elif [ -n "$KS_PASS" ] && [ -f signing/ids-release.p12 ]; then
+            # Llave oficial del proyecto (protegida por la contraseña guardada en los secretos)
+            echo "IDS_KEYSTORE_FILE=$GITHUB_WORKSPACE/signing/ids-release.p12" >> "$GITHUB_ENV"
+            echo "Firmando con la llave oficial"
+          else
+            echo "::warning::Sin la contraseña IDS_KEYSTORE_PASSWORD se firma con la llave de prueba"
           fi
 
       - name: Compilar APK

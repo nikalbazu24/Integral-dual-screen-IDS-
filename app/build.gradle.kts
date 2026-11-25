@@ -28,8 +28,8 @@ android {
             create("release") {
                 storeFile = file(ksFile)
                 storePassword = System.getenv("IDS_KEYSTORE_PASSWORD")
-                keyAlias = System.getenv("IDS_KEY_ALIAS")
-                keyPassword = System.getenv("IDS_KEY_PASSWORD")
+                keyAlias = System.getenv("IDS_KEY_ALIAS")?.takeIf { it.isNotBlank() } ?: "ids"
+                keyPassword = System.getenv("IDS_KEY_PASSWORD")?.takeIf { it.isNotBlank() } ?: System.getenv("IDS_KEYSTORE_PASSWORD")
             }
         }
     }

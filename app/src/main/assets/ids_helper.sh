@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=12
+VERSION=13
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -24,7 +24,7 @@ num() { case "$1" in ''|*[!0-9]*) return 1;; esac; return 0; }
 # Lista de paquetes del panel de fábrica: el conocido + los que la app detecte al presionar el botón AYN
 stock_list() { echo "$STOCK"; [ -f "$D/stock.list" ] && cat "$D/stock.list"; }
 stock_pids() { for k in $(stock_list | sort -u); do pgrep -f "$k" 2>/dev/null; done; }
-okpkg() { case "$1" in ''|*[!a-zA-Z0-9._]*|android|com.android.systemui|$PKG) return 1;; esac; return 0; }
+okpkg() { case "$1" in ''|*[!a-zA-Z0-9._]*|android|com.android.systemui|$PKG|com.odin.settings|com.odin.gameassistant|com.odin.mapping|com.odin.fota|com.odin.factorytest|com.odin.odinlauncher|com.odin.setupwizard|com.qualcomm.qti.performancemode) return 1;; esac; return 0; }
 block() { touch "$D/block.on"; for k in $(stock_list | sort -u); do okpkg "$k" && pm disable-user --user 0 "$k" >/dev/null 2>&1; done; }
 unblock() { rm -f "$D/block.on"; for k in $(stock_list | sort -u); do okpkg "$k" && pm enable "$k" >/dev/null 2>&1; done; }
 # Quitar para siempre: igual que el bloqueo, pero NO se revierte si IDS se cierra. Anota el resultado de cada paquete.
@@ -256,10 +256,20 @@ run() {
       rm -f "$D/perm.on" "$D/block.on" "$D/block.txt"
       : > "$D/restore.tmp"
       for k in $( (stock_list; pm list packages -d 2>/dev/null | sed 's/package://' | grep -iE "odin|ayn|thor|dual") | sort -u); do
-        okpkg "$k" || continue
+        case "$k" in ''|*[!a-zA-Z0-9._]*|com.odin.setupwizard) continue;; esac
         pm enable "$k" >/dev/null 2>&1 && echo "$k" >> "$D/restore.tmp"
       done
       mv "$D/restore.tmp" "$D/restore.txt"; own "$D/restore.txt";;
+    aynkey) case "$a" in ''|*[!A-Za-z0-9_]*) return;; esac; echo "$a" > "$D/aynkey";;
+    hide) case "$a" in on) touch "$D/hide.on";; off) rm -f "$D/hide.on";; esac;;
+    selfupdate)
+      # Instala la versión nueva descargada por la app (misma firma) y vuelve a abrir el panel
+      [ -f "$D/update.apk" ] || return
+      ( sz=$(stat -c %s "$D/update.apk")
+        pm install -r -S "$sz" < "$D/update.apk" > "$D/update.log" 2>&1
+        own "$D/update.log"
+        am start-foreground-service -n $PKG/.panel.PanelService >/dev/null 2>&1
+        rm -f "$D/update.apk" ) </dev/null >/dev/null 2>&1 &;;
     tempunblock) for k in $(stock_list | sort -u); do okpkg "$k" && pm enable "$k" >/dev/null 2>&1; done;;
     audit) rm -f "$D/audit.ok"; audit </dev/null >/dev/null 2>&1 &;;
     cap)
@@ -353,6 +363,20 @@ run() {
   esac
 }
 
+# Cierra la ventana del panel de AYN (como apretar "atrás" en esa pantalla) sin detener la app de AYN
+hide_stock() {
+  d=""
+  dumpsys window displays 2>/dev/null | while read -r l; do
+    case "$l" in *"Display: mDisplayId="*) d=${l#*mDisplayId=}; d=${d%% *};; esac
+    case "$l" in
+      *mCurrentFocus=*)
+        for k in $(stock_list | sort -u); do
+          case "$l" in *"$k"*) [ -n "$d" ] && input -d "$d" keyevent 4 >/dev/null 2>&1; break;; esac
+        done;;
+    esac
+  done
+}
+
 # Vigilante de botones: anota la última tecla presionada (sirve para el botón AYN)
 ( getevent -ql 2>/dev/null | while read -r dev typ code val; do
     [ "$typ" = "EV_KEY" ] || continue
@@ -360,6 +384,10 @@ run() {
     echo "$code $(date +%s)$RANDOM" > "$D/key.tmp"
     mv "$D/key.tmp" "$D/key.evt"
     own "$D/key.evt"
+    # Ocultar el panel de AYN sin dormirlo (así luces, ventilador y lo demás siguen funcionando)
+    if [ -f "$D/hide.on" ] && [ "$code" = "$(cat "$D/aynkey" 2>/dev/null)" ]; then
+      ( sleep 0.3; hide_stock; sleep 0.5; hide_stock ) &
+    fi
   done ) &
 KW=$!
 
