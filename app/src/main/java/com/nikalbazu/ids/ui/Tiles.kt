@@ -17,6 +17,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -548,7 +549,7 @@ private fun Slide(value: Int, fill: Color, vertical: Boolean, onSlide: (Int) -> 
     Box(
         Modifier.fillMaxSize().clip(shape).background(t.track)
             .pointerInput(vertical) {
-                if (vertical) androidx.compose.foundation.gestures.detectVerticalDragGestures(onDragEnd = { release() }, onDragCancel = { release() }) { c, _ ->
+                if (vertical) detectVerticalDragGestures(onDragEnd = { release() }, onDragCancel = { release() }) { c, _ ->
                     c.consume(); slide(((1f - c.position.y / size.height) * 100).roundToInt().coerceIn(1, 100))
                 } else detectHorizontalDragGestures(onDragEnd = { release() }, onDragCancel = { release() }) { c, _ ->
                     c.consume(); slide(((c.position.x / size.width) * 100).roundToInt().coerceIn(1, 100))
