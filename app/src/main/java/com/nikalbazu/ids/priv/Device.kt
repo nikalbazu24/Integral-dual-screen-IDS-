@@ -90,8 +90,49 @@ object Device {
         }
     }
 
+    // ---- Botones de AYN aprendidos ----
+    val STOCK_BUTTONS = listOf("Bloqueo automático", "Estilo de control", "Alimentación directa", "Vibración", "Luz ambiental",
+        "Botón extra 1", "Botón extra 2", "Botón extra 3")
+
+    private fun readSetting(full: String): String? = runCatching {
+        val ns = full.substringBefore(':'); val key = full.substringAfter(':')
+        val r = ctx.contentResolver
+        when (ns) {
+            "system" -> SysSettings.System.getString(r, key)
+            "global" -> SysSettings.Global.getString(r, key)
+            else -> SysSettings.Secure.getString(r, key)
+        }
+    }.getOrNull()
+
+    fun learnedOn(name: String): Boolean {
+        val l = Store.settings.value.learned[name] ?: return false
+        return l.on.isNotEmpty() && l.on.all { (k, v) -> readSetting(k) == v }
+    }
+
+    private fun applyLearned(name: String, turnOn: Boolean) {
+        val l = Store.settings.value.learned[name] ?: return
+        val target = if (turnOn) l.on else l.off
+        Helper.send(*target.map { (k, v) -> "put ${k.substringBefore(':')} ${k.substringAfter(':')} $v" }.toTypedArray())
+    }
+
+    /** Diferencia entre las dos fotos de ajustes: lo que cambió al tocar el botón en el panel de AYN. */
+    fun finishLearning(name: String): Int {
+        val before = Helper.readSnap(1); val after = Helper.readSnap(2)
+        val noisy = Regex("brightness|volume|time|timestamp|last_|_count|boot|uptime|alarm|screen_off", RegexOption.IGNORE_CASE)
+        val changed = after.filter { (k, v) -> before[k] != v && !noisy.containsMatchIn(k) && v.isNotBlank() && !v.contains(' ') }
+        if (changed.isNotEmpty()) {
+            val off = changed.mapValues { (k, _) -> before[k] ?: "0" }
+            Store.update { it.copy(learned = it.learned + (name to com.nikalbazu.ids.core.Learned(changed, off))) }
+            Store.log("Aprendido: $name (${changed.keys.joinToString { it.substringAfter(':') }})", "AYN")
+        }
+        return changed.size
+    }
+
+    fun forget(name: String) = Store.update { it.copy(learned = it.learned - name) }
+
     // ---- Accesos rápidos ----
     fun isOn(name: String): Boolean = runCatching {
+        if (name in Store.settings.value.learned) return learnedOn(name)
         when (name) {
             "Wi‑Fi" -> ctx.getSystemService(WifiManager::class.java).isWifiEnabled
             "Bluetooth" -> ctx.getSystemService(BluetoothManager::class.java).adapter?.isEnabled == true
@@ -102,6 +143,8 @@ object Device {
 
     fun toggle(name: String) {
         val on = !isOn(name)
+        if (name in Store.settings.value.learned) { applyLearned(name, on); return }
+        if (name in STOCK_BUTTONS) { Store.toast("Enséñale este botón: pantalla de arriba › Aprender botones de AYN"); return }
         when (name) {
             "Wi‑Fi" -> Helper.send("wifi " + if (on) "on" else "off")
             "Bluetooth" -> Helper.send("bt " + if (on) "on" else "off")

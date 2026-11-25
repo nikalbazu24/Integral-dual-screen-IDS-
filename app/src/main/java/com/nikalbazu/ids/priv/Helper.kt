@@ -16,7 +16,7 @@ object Helper {
     private lateinit var ctx: Context
     private var lastLaunch = 0L
     var method: String = "ninguno"; private set
-    private const val VERSION = "4"
+    private const val VERSION = "5"
     /** Todo lo que toca archivos va en segundo plano para que el panel nunca se trabe. */
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "ids-helper").apply { isDaemon = true } }
 
@@ -66,6 +66,16 @@ object Helper {
             }.onFailure { ErrorReporter.report("Helper.send", it) }
         }
     }
+
+    /** Ajustes del sistema guardados por la orden "snap": "espacio:clave" → valor. */
+    fun readSnap(n: Int): Map<String, String> = runCatching {
+        File(dir, "snap_$n.txt").readLines().mapNotNull { line ->
+            val i = line.indexOf('=')
+            if (i <= 0) null else line.substring(0, i) to line.substring(i + 1)
+        }.toMap()
+    }.getOrDefault(emptyMap())
+
+    fun snapAge(n: Int): Long = File(dir, "snap_$n.txt").let { if (it.exists()) System.currentTimeMillis() - it.lastModified() else Long.MAX_VALUE }
 
     fun readDiag(): String = runCatching { File(dir, "diag.txt").readText() }.getOrDefault("")
 

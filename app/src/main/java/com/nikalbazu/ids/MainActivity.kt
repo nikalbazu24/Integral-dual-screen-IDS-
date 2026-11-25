@@ -26,6 +26,7 @@ import com.nikalbazu.ids.core.ErrorReporter
 import com.nikalbazu.ids.core.Store
 import com.nikalbazu.ids.panel.Apps
 import com.nikalbazu.ids.panel.PanelService
+import com.nikalbazu.ids.priv.Device
 import com.nikalbazu.ids.priv.Helper
 import com.nikalbazu.ids.priv.PServer
 import com.nikalbazu.ids.ui.Card
@@ -36,6 +37,7 @@ import com.nikalbazu.ids.ui.Title
 import com.nikalbazu.ids.ui.ToggleCard
 import com.nikalbazu.ids.ui.buildTok
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /** Pantalla de arriba: preparación, permisos y ajustes avanzados. */
 class MainActivity : ComponentActivity() {
@@ -60,7 +62,10 @@ private fun Setup() {
     val s by Store.settings.collectAsState()
     val learning by Store.learningKey.collectAsState()
     val visible by Store.panelVisible.collectAsState()
+    val learningName by Store.learningSetting.collectAsState()
+    val scope = rememberCoroutineScope()
     var tick by remember { mutableIntStateOf(0) }
+    var toastText by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { while (true) { delay(1500); tick++ } }
     val tok = remember(s.design, s.palette, s.font, s.techNumbers) { buildTok(ctx, s) }
 
@@ -110,6 +115,49 @@ private fun Setup() {
                             val on = !s.replaceStock
                             Store.update { it.copy(replaceStock = on) }
                             Helper.send(if (on) "freeze" else "thaw")
+                        }
+                    }
+                }
+                Card {
+                    T("Aprender botones de AYN", 24.sp, FontWeight.Black)
+                    T(if (learningName == null)
+                        "Toca “Aprender” en un botón. Luego abre el panel de AYN (pantalla de abajo), toca ese mismo botón una vez y vuelve aquí a tocar “Ya lo toqué”."
+                    else "Ahora toca “$learningName” en el panel de AYN, una sola vez, y después “Ya lo toqué”.", 17.sp, FontWeight.Bold, t.mu, maxLines = 4)
+                    if (learningName != null) Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Pill("Ya lo toqué", true, Modifier.weight(1f), 58.dp) {
+                            val name = learningName ?: return@Pill
+                            Helper.send("snap 2")
+                            scope.launch {
+                                var waited = 0
+                                while (Helper.snapAge(2) > 4000 && waited < 8000) { delay(400); waited += 400 }
+                                val n = Device.finishLearning(name)
+                                Store.learningSetting.value = null
+                                if (s.replaceStock) Helper.send("freeze")
+                                Store.toast(if (n > 0) "Listo: “$name” aprendido" else "No se detectó ningún cambio. Prueba de nuevo.")
+                                toastText = if (n > 0) "“$name” aprendido ($n ajuste${if (n > 1) "s" else ""})" else "No se detectó cambio en “$name”. Intenta otra vez."
+                            }
+                        }
+                        Pill("Cancelar", false, Modifier.width(200.dp), 58.dp) {
+                            Store.learningSetting.value = null
+                            if (s.replaceStock) Helper.send("freeze")
+                        }
+                    }
+                    if (toastText.isNotEmpty()) T(toastText, 17.sp, FontWeight.Black, t.v[1])
+                    Device.STOCK_BUTTONS.forEach { name ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            val learned = s.learned[name]
+                            T(if (learned != null) "●" else "○", 22.sp, FontWeight.Black, if (learned != null) t.v[1] else t.mu)
+                            Column(Modifier.weight(1f)) {
+                                T(name, 19.sp, FontWeight.Black)
+                                T(learned?.on?.keys?.joinToString { it.substringAfter(':') } ?: "Sin aprender", 14.sp, FontWeight.Bold, t.mu, maxLines = 1)
+                            }
+                            Pill("Aprender", learningName == name, Modifier.width(170.dp), 48.dp, 16.sp) {
+                                // Despierta el panel de fábrica y toma la primera foto de los ajustes
+                                Helper.send("thaw", "snap 1")
+                                Store.learningSetting.value = name
+                                toastText = ""
+                            }
+                            if (learned != null) Pill("Olvidar", false, Modifier.width(150.dp), 48.dp, 16.sp) { Device.forget(name) }
                         }
                     }
                 }

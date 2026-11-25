@@ -42,6 +42,8 @@ class PanelService : Service() {
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
+            // Al abrir la consola el sistema puede revivir el panel de fábrica: lo volvemos a dormir.
+            if (i.action == Intent.ACTION_SCREEN_ON && Store.settings.value.replaceStock) Helper.send("freeze")
             if ("sleep" !in Store.settings.value.automation) return
             when (i.action) {
                 Intent.ACTION_SCREEN_OFF -> {

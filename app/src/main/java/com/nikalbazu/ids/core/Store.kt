@@ -54,7 +54,11 @@ data class Settings(
     val favorites: List<String> = emptyList(),
     val games: Map<String, GameProfile> = emptyMap(),
     val timerMin: Int = 60,
+    /** Botones de AYN aprendidos: nombre → (ajuste → valor encendido / apagado). */
+    val learned: Map<String, Learned> = emptyMap(),
 )
+
+data class Learned(val on: Map<String, String>, val off: Map<String, String>)
 
 /** Navegación del panel (no se guarda). */
 data class Nav(
@@ -120,6 +124,8 @@ object Store {
     val foreground = MutableStateFlow<String?>(null)
     val timerEndsAt = MutableStateFlow(0L)
     val message = MutableStateFlow<String?>(null)
+    /** Botón de AYN que se está aprendiendo ahora mismo (null = ninguno). */
+    val learningSetting = MutableStateFlow<String?>(null)
 
     fun init(ctx: Context) {
         appContext = ctx.applicationContext
@@ -178,6 +184,11 @@ object Store {
                 .put("fps", p.fps).put("pane", p.pane))
         }
         put("games", g)
+        val l = JSONObject()
+        s.learned.forEach { (name, v) ->
+            l.put(name, JSONObject().put("on", JSONObject(v.on as Map<*, *>)).put("off", JSONObject(v.off as Map<*, *>)))
+        }
+        put("learned", l)
     }
 
     private fun JSONObject.strings(key: String): List<String>? = optJSONArray(key)?.let { a -> (0 until a.length()).map { a.optString(it) } }
@@ -191,6 +202,13 @@ object Store {
                 val p = g.getJSONObject(k)
                 GameProfile(p.optString("hz", "120 Hz"), p.optString("perf", "Equilibrado"), p.optString("fan", "Auto"),
                     p.optString("ct", "Ninguno"), p.optInt("fps", 60), p.optString("pane", "Inicio"))
+            }
+        } ?: emptyMap()
+        fun JSONObject.strMap(): Map<String, String> = keys().asSequence().associateWith { optString(it) }
+        val learned = o.optJSONObject("learned")?.let { l ->
+            l.keys().asSequence().associateWith { k ->
+                val v = l.getJSONObject(k)
+                Learned(v.optJSONObject("on")?.strMap() ?: emptyMap(), v.optJSONObject("off")?.strMap() ?: emptyMap())
             }
         } ?: emptyMap()
         return Settings(
@@ -210,6 +228,7 @@ object Store {
             notes = o.optString("notes", d.notes), aynKey = o.optString("aynKey", d.aynKey),
             replaceStock = o.optBoolean("replaceStock", d.replaceStock), bottomDisplay = o.optInt("bottomDisplay", d.bottomDisplay),
             favorites = o.strings("favorites") ?: d.favorites, games = games, timerMin = o.optInt("timerMin", d.timerMin),
+            learned = learned,
         )
     }
 }

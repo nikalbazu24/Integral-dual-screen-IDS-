@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=4
+VERSION=5
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -20,11 +20,14 @@ echo $$ > "$D/helper.pid"
 own() { chown "$U:$U" "$1" 2>/dev/null; chmod 666 "$1" 2>/dev/null; }
 num() { case "$1" in ''|*[!0-9]*) return 1;; esac; return 0; }
 
-thaw() { for p in $(pidof $STOCK); do kill -CONT "$p" 2>/dev/null; done; }
-freeze() { for p in $(pidof $STOCK); do kill -STOP "$p" 2>/dev/null; done; }
+# Panel de fábrica: se duerme mientras IDS lo reemplace (también si el sistema lo reinicia al abrir la consola)
+stock_pids() { pgrep -f "$STOCK" 2>/dev/null; }
+thaw() { rm -f "$D/freeze.on"; for p in $(stock_pids); do kill -CONT "$p" 2>/dev/null; done; }
+freeze() { touch "$D/freeze.on"; for p in $(stock_pids); do kill -STOP "$p" 2>/dev/null; done; }
+keep_frozen() { [ -f "$D/freeze.on" ] && for p in $(stock_pids); do kill -STOP "$p" 2>/dev/null; done; }
 
 cleanup() {
-  thaw
+  for p in $(stock_pids); do kill -CONT "$p" 2>/dev/null; done
   fx_stop
   [ -n "$KW" ] && kill "$KW" 2>/dev/null
   pkill -f "getevent -ql" 2>/dev/null
@@ -171,6 +174,17 @@ run() {
       FXP=$!;;
     fxoff) fx_stop;;
     diag) diag;;
+    snap)
+      case "$a" in 1|2) ;; *) return;; esac
+      { settings list system | sed 's/^/system:/'
+        settings list global | sed 's/^/global:/'
+        settings list secure | sed 's/^/secure:/'; } > "$D/snap.tmp" 2>/dev/null
+      mv "$D/snap.tmp" "$D/snap_$a.txt"; own "$D/snap_$a.txt";;
+    put)
+      case "$a" in system|global|secure) ;; *) return;; esac
+      case "$b" in ''|*[!A-Za-z0-9_.]*) return;; esac
+      case "$c" in ''|*[!A-Za-z0-9_.,:-]*) return;; esac
+      settings put "$a" "$b" "$c";;
     freeze) freeze;;
     thaw) thaw;;
     stop) cleanup;;
@@ -192,6 +206,7 @@ n=0
 while true; do
   if pidof $PKG >/dev/null 2>&1; then miss=0; else miss=$((miss+1)); fi
   [ $miss -ge 20 ] && cleanup
+  keep_frozen
   for f in "$D"/cmd_*; do
     [ -f "$f" ] || continue
     while read -r c1 c2 c3 c4 c5 c6; do run "$c1" "$c2" "$c3" "$c4" "$c5" "$c6"; done < "$f"

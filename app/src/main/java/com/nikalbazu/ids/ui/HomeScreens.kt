@@ -265,11 +265,21 @@ fun ControlScreen() {
             Pill("Traer app aquí", false, Modifier.weight(1f), 84.dp, 19.sp) { Store.toast("Traer app llegará en la próxima versión") }
             Pill("Apagar pantalla arriba", false, Modifier.weight(1f), 84.dp, 19.sp) { Device.setScreens("Abajo") }
         }
-        val names = listOf("Wi‑Fi", "Bluetooth", "No molestar", "Captura", "Carga 80 %", "Ratón virtual", "Gatillos L2/R2", "Luces RGB")
+        val learned = s.learned.keys
+        val names = listOf("Wi‑Fi", "Bluetooth", "No molestar", "Captura") +
+            Device.STOCK_BUTTONS.take(5) + Device.STOCK_BUTTONS.drop(5).filter { it in learned } +
+            listOf("Carga 80 %", "Ratón virtual", "Gatillos L2/R2")
+        LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(1500); tick++ } }
         Grid(4, names.size) { i ->
-            val on = remember(tick) { Device.isOn(names[i]) }
-            ToggleCard(names[i], "", on, Modifier.weight(1f)) { Device.toggle(names[i]); tick++ }
+            val n = names[i]
+            val on = remember(tick, s.learned) { Device.isOn(n) }
+            val hint = when {
+                n in learned -> "Botón de AYN"
+                n in Device.STOCK_BUTTONS -> "Sin aprender"
+                else -> ""
+            }
+            ToggleCard(n, hint, on, Modifier.weight(1f)) { Device.toggle(n); tick++ }
         }
-        T("Wi‑Fi, Bluetooth, No molestar y Captura ya funcionan. El resto se conectará en próximas versiones.", 17.sp, FontWeight.Bold, t.mu)
+        T("Los botones de AYN se enseñan una vez en la pantalla de arriba (Aprender botones de AYN) y desde ahí funcionan aquí.", 17.sp, FontWeight.Bold, t.mu)
     }
 }
