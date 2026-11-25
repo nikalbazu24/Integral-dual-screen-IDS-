@@ -23,6 +23,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -190,20 +196,72 @@ fun Switch(on: Boolean) {
     }
 }
 
-/** Barra grande con − y + a los lados. */
+/**
+ * Barra grande que se desliza con el dedo, con − y + a los lados.
+ * onSlide recibe 0..1 mientras se mueve; onRelease se llama al soltar (ahí se aplica el cambio real).
+ */
 @Composable
-fun StepBar(text: String, fraction: Float, fill: Color, modifier: Modifier = Modifier, height: Dp = 64.dp, onMinus: () -> Unit, onPlus: () -> Unit) {
+fun StepBar(
+    text: String,
+    fraction: Float,
+    fill: Color,
+    modifier: Modifier = Modifier,
+    height: Dp = 64.dp,
+    onMinus: () -> Unit,
+    onPlus: () -> Unit,
+    onSlide: ((Float) -> Unit)? = null,
+    onRelease: (() -> Unit)? = null,
+) {
     val t = LocalTok.current
+    val slide by rememberUpdatedState(onSlide)
+    val release by rememberUpdatedState(onRelease)
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Pill("−", false, Modifier.width(54.dp), height, 26.sp, onMinus)
         Box(
-            Modifier.weight(1f).height(height).clip(RoundedCornerShape(height / 2)).background(t.track),
+            Modifier.weight(1f).height(height).clip(RoundedCornerShape(height / 2)).background(t.track)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = { release?.invoke() },
+                        onDragCancel = { release?.invoke() },
+                    ) { change, _ ->
+                        change.consume()
+                        slide?.invoke((change.position.x / size.width).coerceIn(0f, 1f))
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures { pos ->
+                        slide?.invoke((pos.x / size.width).coerceIn(0f, 1f))
+                        release?.invoke()
+                    }
+                },
             contentAlignment = Alignment.CenterStart,
         ) {
             Box(Modifier.fillMaxHeight().fillMaxWidth(fraction.coerceIn(0f, 1f)).clip(RoundedCornerShape(height / 2)).background(fill))
             T(text, 17.sp, FontWeight.Black, modifier = Modifier.padding(start = 18.dp), maxLines = 1)
         }
         Pill("+", false, Modifier.width(54.dp), height, 26.sp, onPlus)
+    }
+}
+
+/** Columna que se desliza hacia arriba y abajo (curva del ventilador). */
+@Composable
+fun VBar(text: String, fraction: Float, fill: Color, modifier: Modifier = Modifier, onSlide: (Float) -> Unit, onRelease: () -> Unit) {
+    val t = LocalTok.current
+    val slide by rememberUpdatedState(onSlide)
+    val release by rememberUpdatedState(onRelease)
+    Box(
+        modifier.clip(RoundedCornerShape(26.dp)).background(t.track)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(onDragEnd = { release() }, onDragCancel = { release() }) { change, _ ->
+                    change.consume()
+                    slide(1f - (change.position.y / size.height).coerceIn(0f, 1f))
+                }
+            }
+            .pointerInput(Unit) { detectTapGestures { pos -> slide(1f - (pos.y / size.height).coerceIn(0f, 1f)); release() } },
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        Box(Modifier.fillMaxWidth().fillMaxHeight(fraction.coerceIn(0f, 1f)).clip(RoundedCornerShape(26.dp)).background(fill))
+        T(text, 22.sp, FontWeight.Black, modifier = Modifier.padding(bottom = 12.dp), num = true)
     }
 }
 

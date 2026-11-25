@@ -67,6 +67,8 @@ class PanelService : Service() {
         })
         if (Store.settings.value.replaceStock) Helper.send("freeze")
         lastKeyStamp = Helper.lastKey()?.second
+        Device.applyLeds()
+        Helper.send("diag")
         loops()
     }
 
@@ -116,6 +118,9 @@ class PanelService : Service() {
                 runCatching { withContext(Dispatchers.IO) { refreshTelemetry() } }
                     .onFailure { ErrorReporter.report("telemetría", it) }
                 tickTimer()
+                ledTick++
+                val fx = Store.settings.value.effect
+                if ((fx == "Según temperatura" && ledTick % 5 == 0) || (fx == "Según batería" && ledTick % 60 == 0)) Device.applyLeds()
                 delay(1000)
             }
         }
@@ -188,6 +193,7 @@ class PanelService : Service() {
         if (pct > 25 || charging) lowApplied = false
     }
     private var lowApplied = false
+    private var ledTick = 0
 
     private fun tickTimer() {
         val end = Store.timerEndsAt.value

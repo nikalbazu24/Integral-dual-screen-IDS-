@@ -171,13 +171,16 @@ fun SlidersCard() {
     Row(Modifier.fillMaxWidth().card(t).padding(horizontal = 20.dp, vertical = 18.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         StepBar("Brillo arriba · $top", top / 100f, t.v[2].copy(alpha = if (t.light) 0.35f else 0.4f), Modifier.weight(1f),
             onMinus = { top = (top - 10).coerceAtLeast(1); Device.setTopBrightness(top) },
-            onPlus = { top = (top + 10).coerceAtMost(100); Device.setTopBrightness(top) })
+            onPlus = { top = (top + 10).coerceAtMost(100); Device.setTopBrightness(top) },
+            onSlide = { top = (it * 100).toInt().coerceIn(1, 100) }, onRelease = { Device.setTopBrightness(top) })
         StepBar("Brillo abajo · $bottom", bottom / 100f, t.v[2].copy(alpha = if (t.light) 0.35f else 0.4f), Modifier.weight(1f),
             onMinus = { bottom = (bottom - 10).coerceAtLeast(1); Device.setBottomBrightness(bottom) },
-            onPlus = { bottom = (bottom + 10).coerceAtMost(100); Device.setBottomBrightness(bottom) })
+            onPlus = { bottom = (bottom + 10).coerceAtMost(100); Device.setBottomBrightness(bottom) },
+            onSlide = { bottom = (it * 100).toInt().coerceIn(1, 100) }, onRelease = { Device.setBottomBrightness(bottom) })
         StepBar("Volumen · $vol", vol / 100f, t.v[2].copy(alpha = if (t.light) 0.35f else 0.4f), Modifier.weight(1f),
             onMinus = { vol = (vol - 10).coerceAtLeast(0); Device.setVolume(vol) },
-            onPlus = { vol = (vol + 10).coerceAtMost(100); Device.setVolume(vol) })
+            onPlus = { vol = (vol + 10).coerceAtMost(100); Device.setVolume(vol) },
+            onSlide = { val n = (it * 100).toInt(); if (n != vol) { vol = n; Device.setVolume(vol) } })
     }
 }
 

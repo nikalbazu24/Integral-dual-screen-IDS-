@@ -73,6 +73,7 @@ private fun Setup() {
             val helper = remember(tick) { Helper.statusText() }
             val pserver = remember(tick) { PServer.available }
             val reports = remember(tick) { ErrorReporter.pending().size }
+            val diag = remember(tick) { Helper.readDiag() }
             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(40.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -111,6 +112,15 @@ private fun Setup() {
                             Helper.send(if (on) "freeze" else "thaw")
                         }
                     }
+                }
+                Card {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        T("Diagnóstico de luces de los sticks", 24.sp, FontWeight.Black, modifier = Modifier.weight(1f))
+                        Pill("Actualizar", false, Modifier.width(200.dp), 50.dp, 16.sp) { Helper.send("diag") }
+                    }
+                    T(diag.ifBlank { "Aún sin datos. Espera unos segundos con la conexión activa." }, 15.sp, FontWeight.Bold, t.mu, maxLines = 30)
+                    T("Si cambias el color desde los ajustes de AYN y tocas Actualizar, aquí aparece qué ajuste cambió. Mándame una captura para conectarlo.",
+                        15.sp, FontWeight.Bold, t.mu, maxLines = 3)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
                     Card(Modifier.weight(1f)) {

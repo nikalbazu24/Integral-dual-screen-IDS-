@@ -7,6 +7,7 @@ import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.Executors
 
 /** Configuración por juego (se aplica sola al abrir la app). */
 data class GameProfile(
@@ -136,10 +137,14 @@ object Store {
 
     private fun prefs() = appContext.getSharedPreferences("ids", Context.MODE_PRIVATE)
 
+    private val saver = Executors.newSingleThreadExecutor { r -> Thread(r, "ids-store").apply { isDaemon = true } }
+
+    /** Cambia la configuración al instante y la guarda en segundo plano. */
     fun update(block: (Settings) -> Settings) {
-        val next = block(settings.value)
-        settings.value = next
-        prefs().edit().putString("settings", encode(next).toString()).apply()
+        val next = synchronized(this) { block(settings.value).also { settings.value = it } }
+        saver.execute {
+            if (settings.value === next) prefs().edit().putString("settings", encode(next).toString()).apply()
+        }
     }
 
     fun nav(block: (Nav) -> Nav) { nav.value = block(nav.value) }

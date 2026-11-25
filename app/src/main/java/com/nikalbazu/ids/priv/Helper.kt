@@ -5,6 +5,7 @@ import android.os.Process
 import com.nikalbazu.ids.core.ErrorReporter
 import com.nikalbazu.ids.core.Store
 import java.io.File
+import java.util.concurrent.Executors
 
 /**
  * Comunicación con el ayudante con privilegios (assets/ids_helper.sh).
@@ -15,6 +16,9 @@ object Helper {
     private lateinit var ctx: Context
     private var lastLaunch = 0L
     var method: String = "ninguno"; private set
+    private const val VERSION = "4"
+    /** Todo lo que toca archivos va en segundo plano para que el panel nunca se trabe. */
+    private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "ids-helper").apply { isDaemon = true } }
 
     fun init(context: Context) {
         ctx = context.applicationContext
@@ -30,7 +34,7 @@ object Helper {
     }
 
     fun ensureRunning() {
-        if (alive()) return
+        if (alive() && readTelemetry()["v"] == VERSION) return
         val now = System.currentTimeMillis()
         if (now - lastLaunch < 8000) return
         lastLaunch = now
@@ -51,14 +55,19 @@ object Helper {
 
     fun send(vararg lines: String) {
         if (lines.isEmpty()) return
-        ensureRunning()
-        runCatching {
-            val name = "${System.nanoTime()}"
-            val tmp = File(dir, "tmp_$name")
-            tmp.writeText(lines.joinToString("\n", postfix = "\n"))
-            tmp.renameTo(File(dir, "cmd_$name"))
-        }.onFailure { ErrorReporter.report("Helper.send", it) }
+        val text = lines.joinToString("\n", postfix = "\n")
+        io.execute {
+            ensureRunning()
+            runCatching {
+                val name = "${System.nanoTime()}"
+                val tmp = File(dir, "tmp_$name")
+                tmp.writeText(text)
+                tmp.renameTo(File(dir, "cmd_$name"))
+            }.onFailure { ErrorReporter.report("Helper.send", it) }
+        }
     }
+
+    fun readDiag(): String = runCatching { File(dir, "diag.txt").readText() }.getOrDefault("")
 
     fun stop() = send("thaw", "stop")
 

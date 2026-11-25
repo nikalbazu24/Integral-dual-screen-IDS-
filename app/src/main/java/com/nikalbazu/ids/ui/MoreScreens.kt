@@ -86,15 +86,18 @@ fun ClusterTuneScreen() {
                 Card(Modifier.weight(3f)) {
                     T(s.ct, 30.sp, FontWeight.Black)
                     T("Solo pone un tope a la velocidad máxima. No cambia el voltaje ni el gobernador.", 16.sp, FontWeight.Bold, t.mu)
+                    var draft by remember(s.caps) { mutableStateOf(s.caps) }
                     listOf(Triple("s", "CPU pequeños · 3× A510", 2016000), Triple("g", "CPU medianos · 4× A715/A710", 2803200),
                         Triple("p", "CPU principal · 1× X3", 3187200), Triple("gpu", "GPU · Adreno 740", 680000000)).forEach { (k, label, max) ->
-                        val v = s.caps[k] ?: max
+                        val v = draft[k] ?: max
                         val isGpu = k == "gpu"
                         val step = if (isGpu) 25_000_000 else 100_000
                         val text = if (isGpu) "$label · ${v / 1_000_000} MHz" else "$label · ${ghz(v)} GHz"
                         StepBar(text, v / max.toFloat(), t.v[3].copy(alpha = 0.4f), height = 56.dp,
-                            onMinus = { Device.applyCaps("Personalizado", s.caps + (k to (v - step).coerceAtLeast(max / 4))) },
-                            onPlus = { Device.applyCaps("Personalizado", s.caps + (k to (v + step).coerceAtMost(max))) })
+                            onMinus = { Device.applyCaps("Personalizado", draft + (k to (v - step).coerceAtLeast(max / 4))) },
+                            onPlus = { Device.applyCaps("Personalizado", draft + (k to (v + step).coerceAtMost(max))) },
+                            onSlide = { f -> draft = draft + (k to (max * f).toInt().coerceIn(max / 4, max)) },
+                            onRelease = { Device.applyCaps("Personalizado", draft) })
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Pill("Importar", false, Modifier.weight(1f), 52.dp) { Store.toast("Importar perfiles llegará en la próxima versión") }
@@ -199,6 +202,7 @@ fun HardwareScreen() {
                         Spacer(Modifier.weight(1f))
                         Pill((if (s.ledSame) "●  " else "○  ") + "Mismo color en los dos", s.ledSame, Modifier.fillMaxWidth(), 52.dp) {
                             Store.update { it.copy(ledSame = !it.ledSame, ledR = if (!it.ledSame) it.ledL else it.ledR) }
+                            Device.applyLeds()
                         }
                     }
                     Column(Modifier.weight(3f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -216,6 +220,7 @@ fun HardwareScreen() {
                                                 if (st.ledSame) st.copy(ledL = hex, ledR = hex)
                                                 else if (nav.ledSide == "l") st.copy(ledL = hex) else st.copy(ledR = hex)
                                             }
+                                            Device.applyLeds()
                                         })
                                 }
                             }
@@ -223,15 +228,18 @@ fun HardwareScreen() {
                         Card {
                             T("Efecto", 18.sp, FontWeight.ExtraBold, t.mu)
                             val fx = listOf("Fijo", "Respirar", "Arcoíris", "Según batería", "Según temperatura", "Apagadas")
-                            Grid(3, fx.size, 8.dp) { i -> Pill(fx[i], s.effect == fx[i], Modifier.weight(1f), 52.dp, 15.sp) { Store.update { it.copy(effect = fx[i]) } } }
+                            Grid(3, fx.size, 8.dp) { i -> Pill(fx[i], s.effect == fx[i], Modifier.weight(1f), 52.dp, 15.sp) { Store.update { it.copy(effect = fx[i]) }; Device.applyLeds() } }
                         }
-                        StepBar("Brillo de las luces · ${s.ledBright}", s.ledBright / 100f, t.v[4].copy(alpha = 0.45f),
-                            onMinus = { Store.update { it.copy(ledBright = (it.ledBright - 10).coerceAtLeast(0)) } },
-                            onPlus = { Store.update { it.copy(ledBright = (it.ledBright + 10).coerceAtMost(100)) } })
+                        var ledB by remember(s.ledBright) { mutableIntStateOf(s.ledBright) }
+                        StepBar("Brillo de las luces · $ledB", ledB / 100f, t.v[4].copy(alpha = 0.45f),
+                            onMinus = { Store.update { it.copy(ledBright = (it.ledBright - 10).coerceAtLeast(0)) }; Device.applyLeds() },
+                            onPlus = { Store.update { it.copy(ledBright = (it.ledBright + 10).coerceAtMost(100)) }; Device.applyLeds() },
+                            onSlide = { f -> ledB = (f * 100).toInt() },
+                            onRelease = { Store.update { it.copy(ledBright = ledB) }; Device.applyLeds() })
                     }
                 }
-                T("Las luces se guardan, pero aún no se envían a los sticks: falta confirmar cómo las controla la Thor. Luces detectadas: " +
-                    (tele.leds.joinToString().ifBlank { "ninguna todavía" }), 16.sp, FontWeight.Bold, t.mu)
+                T("Luces del sistema detectadas: " + (tele.leds.joinToString().ifBlank { "ninguna todavía" }) +
+                    ". Si los sticks no cambian, revisa “Diagnóstico de luces” en la pantalla de arriba y mándame una captura.", 16.sp, FontWeight.Bold, t.mu, maxLines = 3)
             }
             "fan" -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -251,17 +259,18 @@ fun HardwareScreen() {
                 Card {
                     val custom = s.fan == "Personalizado"
                     T("Curva del ventilador · " + if (custom) "toca + o − en cada temperatura" else "elige Personalizado para editarla", 18.sp, FontWeight.ExtraBold, t.mu)
+                    var curve by remember(s.curve) { mutableStateOf(s.curve) }
+                    fun save(list: List<Int>) = Store.update { st -> st.copy(fan = "Personalizado", curve = list) }
                     Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         listOf(40, 50, 60, 70, 80).forEachIndexed { i, temp ->
-                            val v = s.curve.getOrElse(i) { 50 }
-                            fun set(d: Int) = Store.update { st -> st.copy(fan = "Personalizado", curve = st.curve.toMutableList().also { it[i] = (it[i] + d).coerceIn(0, 100) }) }
+                            val v = curve.getOrElse(i) { 50 }
+                            fun bump(d: Int) = save(curve.toMutableList().also { it[i] = (it[i] + d).coerceIn(0, 100) })
                             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Pill("+", false, Modifier.fillMaxWidth(), 44.dp, 22.sp) { set(5) }
-                                Box(Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(26.dp)).background(t.track), contentAlignment = Alignment.BottomCenter) {
-                                    Box(Modifier.fillMaxWidth().fillMaxHeight(v / 100f).clip(RoundedCornerShape(26.dp)).background(t.v[2].copy(alpha = 0.45f)))
-                                    T("$v %", 22.sp, FontWeight.Black, modifier = Modifier.padding(bottom = 12.dp), num = true)
-                                }
-                                Pill("−", false, Modifier.fillMaxWidth(), 44.dp, 22.sp) { set(-5) }
+                                Pill("+", false, Modifier.fillMaxWidth(), 44.dp, 22.sp) { bump(5) }
+                                VBar("$v %", v / 100f, t.v[2].copy(alpha = 0.45f), Modifier.fillMaxWidth().height(170.dp),
+                                    onSlide = { f -> curve = curve.toMutableList().also { it[i] = (f * 100).toInt() } },
+                                    onRelease = { save(curve) })
+                                Pill("−", false, Modifier.fillMaxWidth(), 44.dp, 22.sp) { bump(-5) }
                                 T("$temp °C", 18.sp, FontWeight.ExtraBold)
                             }
                         }
@@ -274,12 +283,16 @@ fun HardwareScreen() {
                     T("Gatillos L2/R2", 20.sp, FontWeight.Black, modifier = Modifier.width(260.dp))
                     SegRow(listOf("Analógico", "Digital"), s.trig, Modifier.weight(1f), 56.dp) { o -> Store.update { it.copy(trig = o) } }
                 }
-                StepBar("Vibración · ${s.vib} %", s.vib / 100f, t.v[3].copy(alpha = 0.45f),
+                var vib by remember(s.vib) { mutableIntStateOf(s.vib) }
+                var dz by remember(s.deadZone) { mutableIntStateOf(s.deadZone) }
+                StepBar("Vibración · $vib %", vib / 100f, t.v[3].copy(alpha = 0.45f),
                     onMinus = { Store.update { it.copy(vib = (it.vib - 10).coerceAtLeast(0)) } },
-                    onPlus = { Store.update { it.copy(vib = (it.vib + 10).coerceAtMost(100)) } })
-                StepBar("Zona muerta de sticks · ${s.deadZone} %", s.deadZone / 25f, t.v[3].copy(alpha = 0.45f),
+                    onPlus = { Store.update { it.copy(vib = (it.vib + 10).coerceAtMost(100)) } },
+                    onSlide = { f -> vib = (f * 100).toInt() }, onRelease = { Store.update { it.copy(vib = vib) } })
+                StepBar("Zona muerta de sticks · $dz %", dz / 25f, t.v[3].copy(alpha = 0.45f),
                     onMinus = { Store.update { it.copy(deadZone = (it.deadZone - 1).coerceAtLeast(0)) } },
-                    onPlus = { Store.update { it.copy(deadZone = (it.deadZone + 1).coerceAtMost(25)) } })
+                    onPlus = { Store.update { it.copy(deadZone = (it.deadZone + 1).coerceAtMost(25)) } },
+                    onSlide = { f -> dz = (f * 25).toInt() }, onRelease = { Store.update { it.copy(deadZone = dz) } })
                 Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     ToggleCard("Intercambiar A/B y X/Y", "Distribución tipo Nintendo", "swapAB" in s.toggles, Modifier.weight(1f), 110.dp) { Device.toggle("swapAB") }
                     ToggleCard("Giroscopio como stick", "Para apuntar moviendo la consola", "gyro" in s.toggles, Modifier.weight(1f), 110.dp) { Device.toggle("gyro") }
@@ -370,7 +383,7 @@ fun JuegosScreen() {
                     T("Ventilador", 16.sp, FontWeight.ExtraBold, t.mu)
                     SegRow(listOf("Silencio", "Auto", "Máx"), p.fan, height = 48.dp, size = 16.sp) { o -> set { it.copy(fan = o) } }
                     T("Pantalla de abajo al jugar", 16.sp, FontWeight.ExtraBold, t.mu)
-                    SegRow(listOf("Inicio", "Notas", "Táctil"), p.pane, height = 48.dp, size = 16.sp) { o -> set { it.copy(pane = o) } }
+                    SegRow(listOf("Inicio", "Herramientas", "Táctil"), p.pane, height = 48.dp, size = 16.sp) { o -> set { it.copy(pane = o) } }
                     T("CPU/GPU de este juego: ${p.ct} (se cambia en ClusterTune › Por juego)", 16.sp, FontWeight.Bold, t.mu)
                 }
             }
@@ -395,7 +408,6 @@ fun HerramientasScreen() {
     val endsAt by Store.timerEndsAt.collectAsState()
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(endsAt) { while (endsAt > 0) { now = System.currentTimeMillis(); delay(1000) } }
-    var notes by remember { mutableStateOf(s.notes) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Title("Herramientas")
         val tools = listOf(
@@ -411,7 +423,7 @@ fun HerramientasScreen() {
                 }
             }
         }
-        Row(Modifier.height(250.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(Modifier.height(330.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Card(Modifier.weight(1f).fillMaxHeight(), accent = 3) {
                 T("Temporizador de sesión", 20.sp, FontWeight.ExtraBold)
                 val remain = if (endsAt > 0) ((endsAt - now) / 1000).coerceAtLeast(0) else s.timerMin * 60L
@@ -433,29 +445,6 @@ fun HerramientasScreen() {
                     T("Mover el cursor de arriba llegará en la próxima versión", 18.sp, FontWeight.Bold, t.mu)
                 }
             }
-        }
-        Card(accent = 4) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                T("Notas rápidas", 20.sp, FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                Pill(if (nav.editingNotes) "Guardar" else "Editar", nav.editingNotes, height = 46.dp, size = 16.sp) {
-                    val editing = !nav.editingNotes
-                    if (!editing) Store.update { it.copy(notes = notes) }
-                    Store.nav { it.copy(editingNotes = editing) }
-                    PanelService.instance?.setFocusable(editing)
-                }
-            }
-            BasicTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                readOnly = !nav.editingNotes,
-                textStyle = TextStyle(color = t.tx, fontSize = 20.sp, fontFamily = t.font, fontWeight = FontWeight.Bold),
-                cursorBrush = SolidColor(t.tx),
-                modifier = Modifier.fillMaxWidth().height(170.dp).clip(RoundedCornerShape(24.dp)).background(t.track).padding(16.dp),
-                decorationBox = { inner ->
-                    if (notes.isEmpty()) T("Trucos, rutas, contraseñas de juego…", 20.sp, FontWeight.Bold, t.mu)
-                    inner()
-                },
-            )
         }
     }
 }

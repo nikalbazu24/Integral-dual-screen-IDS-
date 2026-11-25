@@ -142,10 +142,39 @@ object Device {
         Store.log("Abriste ${label(pkg)} → perfil propio", "Por juego")
     }
 
-    fun label(pkg: String): String = runCatching {
-        val pm = ctx.packageManager
-        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-    }.getOrDefault(pkg)
+    private val labels = java.util.concurrent.ConcurrentHashMap<String, String>()
+    fun label(pkg: String): String = labels.getOrPut(pkg) {
+        runCatching {
+            val pm = ctx.packageManager
+            pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+        }.getOrDefault(pkg)
+    }
+
+    // ---- Luces de los sticks ----
+    private fun rgb(c: Long) = Triple(((c shr 16) and 0xFF).toInt(), ((c shr 8) and 0xFF).toInt(), (c and 0xFF).toInt())
+
+    /** Aplica color, brillo y efecto a los anillos de los sticks. */
+    fun applyLeds() {
+        val s = Store.settings.value
+        val br = (s.ledBright.coerceIn(0, 100) * 255) / 100
+        val (lr, lg, lb) = rgb(s.ledL)
+        val (rr, rg, rb) = rgb(if (s.ledSame) s.ledL else s.ledR)
+        when (s.effect) {
+            "Apagadas" -> Helper.send("led all 0 0 0 0")
+            "Respirar" -> Helper.send("fxb $lr $lg $lb $br")
+            "Arcoíris" -> Helper.send("fxr $br")
+            "Según batería" -> {
+                val p = Store.tele.value.batteryPct.coerceIn(0, 100)
+                Helper.send("led all ${255 - p * 255 / 100} ${p * 255 / 100} 40 $br")
+            }
+            "Según temperatura" -> {
+                val c = (Store.tele.value.socC ?: 40f).coerceIn(30f, 85f)
+                val k = ((c - 30f) / 55f * 255).toInt()
+                Helper.send("led all $k ${200 - k * 200 / 255} ${255 - k} $br")
+            }
+            else -> Helper.send("led l $lr $lg $lb $br", "led r $rr $rg $rb $br")
+        }
+    }
 
     fun launch(pkg: String, displayId: Int) {
         try {

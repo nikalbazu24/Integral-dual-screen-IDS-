@@ -2,6 +2,17 @@ package com.nikalbazu.ids.ui
 
 import android.media.AudioManager
 import android.view.KeyEvent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,27 +43,44 @@ fun PanelRoot() {
     val tok = remember(s.design, s.palette, s.font, s.techNumbers) { buildTok(ctx, s) }
     val fontScale = when (s.size) { "Pequeña" -> 0.92f; "Grande" -> 1.08f; else -> 1f }
 
-    BoxWithConstraints(Modifier.fillMaxSize().background(tok.bg)) {
+    val visible by Store.panelVisible.collectAsState()
+    val shown = remember { MutableTransitionState(false) }
+    shown.targetState = visible
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
         val px = constraints.maxWidth.toFloat()
         val density = Density(px / 1240f, fontScale)
         CompositionLocalProvider(LocalDensity provides density, LocalTok provides tok) {
-            Column(Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 20.dp)) {
-                StatusBar()
-                Spacer(Modifier.height(14.dp))
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    when (nav.sec) {
-                        "inicio" -> InicioScreen()
-                        "control" -> ControlScreen()
-                        "ct" -> ClusterTuneScreen()
-                        "hw" -> HardwareScreen()
-                        "juegos" -> JuegosScreen()
-                        "herr" -> HerramientasScreen()
-                        else -> PersonalizarScreen()
+            // Al estar oculto, el contenido se retira por completo: no consume nada mientras juegas.
+            AnimatedVisibility(
+                visibleState = shown,
+                enter = fadeIn(tween(220)) +
+                    slideInVertically(tween(320, easing = FastOutSlowInEasing)) { it / 7 } +
+                    scaleIn(tween(320, easing = FastOutSlowInEasing), initialScale = 0.95f),
+                exit = fadeOut(tween(200)) +
+                    slideOutVertically(tween(260, easing = FastOutSlowInEasing)) { it / 9 } +
+                    scaleOut(tween(260), targetScale = 0.96f),
+            ) {
+                Column(Modifier.fillMaxSize().background(tok.bg).padding(horizontal = 32.dp, vertical = 20.dp)) {
+                    StatusBar()
+                    Spacer(Modifier.height(14.dp))
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        Crossfade(nav.sec, animationSpec = tween(180), label = "seccion") { sec ->
+                            when (sec) {
+                                "inicio" -> InicioScreen()
+                                "control" -> ControlScreen()
+                                "ct" -> ClusterTuneScreen()
+                                "hw" -> HardwareScreen()
+                                "juegos" -> JuegosScreen()
+                                "herr" -> HerramientasScreen()
+                                else -> PersonalizarScreen()
+                            }
+                        }
+                        ToastBanner(Modifier.align(Alignment.TopCenter))
                     }
-                    ToastBanner(Modifier.align(Alignment.TopCenter))
+                    Spacer(Modifier.height(14.dp))
+                    Dock(nav.sec)
                 }
-                Spacer(Modifier.height(14.dp))
-                Dock(nav.sec)
             }
         }
     }

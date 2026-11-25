@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=3
+VERSION=4
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -25,6 +25,7 @@ freeze() { for p in $(pidof $STOCK); do kill -STOP "$p" 2>/dev/null; done; }
 
 cleanup() {
   thaw
+  fx_stop
   [ -n "$KW" ] && kill "$KW" 2>/dev/null
   pkill -f "getevent -ql" 2>/dev/null
   rm -f "$D/helper.pid"
@@ -39,6 +40,55 @@ for z in /sys/class/thermal/thermal_zone*; do
     *cpu*|*gpu*|*CPU*|*GPU*|*cpuss*|*gpuss*) ZONES="$ZONES $z/temp";;
   esac
 done
+
+# Luces de los sticks: busca luces RGB del sistema (anillos de los joysticks)
+LEDS=""
+for l in /sys/class/leds/*; do
+  n=$(basename "$l" | tr 'A-Z' 'a-z')
+  case "$n" in *joy*|*stick*|*rgb*|*ring*|*l_led*|*r_led*|*left*|*right*) LEDS="$LEDS $l";; esac
+done
+
+led_set() { # lado r g b brillo
+  side="$1"; r="$2"; g="$3"; b="$4"; br="$5"
+  for l in $LEDS; do
+    n=$(basename "$l" | tr 'A-Z' 'a-z')
+    case "$side" in
+      l) case "$n" in *right*|*_r|*_r_*|*r:*|*-r|*r_led*) continue;; esac;;
+      r) case "$n" in *left*|*_l|*_l_*|*l:*|*-l|*l_led*) continue;; esac;;
+    esac
+    if [ -f "$l/multi_intensity" ]; then
+      out=""
+      for c in $(cat "$l/multi_index" 2>/dev/null); do
+        case "$c" in red) out="$out $r";; green) out="$out $g";; blue) out="$out $b";; *) out="$out 0";; esac
+      done
+      [ -z "$out" ] && out="$r $g $b"
+      echo $out > "$l/multi_intensity" 2>/dev/null
+      echo "$br" > "$l/brightness" 2>/dev/null
+    else
+      case "$n" in
+        *red*) echo $(( r * br / 255 )) > "$l/brightness" 2>/dev/null;;
+        *green*) echo $(( g * br / 255 )) > "$l/brightness" 2>/dev/null;;
+        *blue*) echo $(( b * br / 255 )) > "$l/brightness" 2>/dev/null;;
+        *) echo "$br" > "$l/brightness" 2>/dev/null;;
+      esac
+    fi
+  done
+}
+
+FXP=""
+fx_stop() { [ -n "$FXP" ] && kill "$FXP" 2>/dev/null; FXP=""; }
+
+diag() {
+  {
+    echo "# luces: $LEDS"
+    for l in $LEDS; do echo "$(basename $l): $(ls $l | tr '\n' ' ')"; done
+    echo "# ajustes del sistema relacionados"
+    settings list system 2>/dev/null | grep -iE 'led|light|rgb|joy|stick|lamp|ring'
+    settings list global 2>/dev/null | grep -iE 'led|light|rgb|joy|stick|lamp|ring'
+    settings list secure 2>/dev/null | grep -iE 'led|rgb|joy|stick|lamp'
+  } > "$D/diag.tmp" 2>/dev/null
+  mv "$D/diag.tmp" "$D/diag.txt"; own "$D/diag.txt"
+}
 
 soc_temp() {
   best=0
@@ -76,7 +126,7 @@ telemetry() {
 }
 
 run() {
-  v="$1"; a="$2"; b="$3"
+  v="$1"; a="$2"; b="$3"; c="$4"; d="$5"; e="$6"
   case "$v" in
     fan) num "$a" && settings put system fan_mode "$a";;
     perf) num "$a" && settings put system performance_mode "$a";;
@@ -104,6 +154,23 @@ run() {
       case "$a" in *[!a-zA-Z0-9._]*|'') return;; esac
       [ "$a" = "$PKG" ] || am force-stop "$a";;
     killbg) am kill-all;;
+    led)
+      case "$a" in l|r|all) ;; *) return;; esac
+      num "$b" && num "$c" && num "$d" && num "$e" && { fx_stop; led_set "$a" "$b" "$c" "$d" "$e"; };;
+    fxb)
+      num "$a" && num "$b" && num "$c" && num "$d" || return
+      fx_stop
+      ( while true; do for k in 10 25 45 70 100 135 175 215 255 215 175 135 100 70 45 25; do
+          led_set all "$a" "$b" "$c" $(( k * d / 255 )); sleep 0.09; done; done ) &
+      FXP=$!;;
+    fxr)
+      num "$a" || return
+      fx_stop
+      ( while true; do for col in "255 0 0" "255 110 0" "255 220 0" "90 255 0" "0 255 160" "0 160 255" "60 0 255" "200 0 255" "255 0 140"; do
+          set -- $col; led_set all "$1" "$2" "$3" "$a"; sleep 0.25; done; done ) &
+      FXP=$!;;
+    fxoff) fx_stop;;
+    diag) diag;;
     freeze) freeze;;
     thaw) thaw;;
     stop) cleanup;;
@@ -127,10 +194,11 @@ while true; do
   [ $miss -ge 20 ] && cleanup
   for f in "$D"/cmd_*; do
     [ -f "$f" ] || continue
-    while read -r c1 c2 c3; do run "$c1" "$c2" "$c3"; done < "$f"
+    while read -r c1 c2 c3 c4 c5 c6; do run "$c1" "$c2" "$c3" "$c4" "$c5" "$c6"; done < "$f"
     rm -f "$f"
   done
   [ $((n % 2)) -eq 0 ] && telemetry
+  [ $((n % 60)) -eq 1 ] && diag
   n=$((n+1))
   sleep 0.5
 done

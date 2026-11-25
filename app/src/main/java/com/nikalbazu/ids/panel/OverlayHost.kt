@@ -3,6 +3,8 @@ package com.nikalbazu.ids.panel
 import android.content.Context
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
+import android.os.Handler
+import android.os.Looper
 import android.view.Display
 import android.view.Gravity
 import android.view.View
@@ -78,18 +80,24 @@ class OverlayHost(private val base: Context) : LifecycleOwner, SavedStateRegistr
         return true
     }
 
+    private val handler = Handler(Looper.getMainLooper())
+
+    /** Aparece con animación: primero la ventana, luego el contenido entra deslizándose. */
     fun show(): Boolean {
         if (!attach()) return false
+        handler.removeCallbacksAndMessages(null)
         view?.visibility = View.VISIBLE
-        setFlags(touchable = true, focusable = Store.nav.value.editingNotes)
+        setFlags(touchable = true, focusable = false)
         Store.panelVisible.value = true
         return true
     }
 
+    /** Se va con animación y, al terminar, la ventana deja pasar los toques a lo de abajo. */
     fun hide() {
-        view?.visibility = View.GONE
-        setFlags(touchable = false, focusable = false)
         Store.panelVisible.value = false
+        setFlags(touchable = false, focusable = false)
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed({ if (!Store.panelVisible.value) view?.visibility = View.GONE }, 320)
     }
 
     fun toggle(): Boolean = if (Store.panelVisible.value) { hide(); true } else show()
@@ -108,6 +116,7 @@ class OverlayHost(private val base: Context) : LifecycleOwner, SavedStateRegistr
     }
 
     fun destroy() {
+        handler.removeCallbacksAndMessages(null)
         runCatching { view?.let { wm?.removeView(it) } }
         view = null
         registry.currentState = Lifecycle.State.DESTROYED
