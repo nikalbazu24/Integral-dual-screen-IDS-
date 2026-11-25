@@ -1,4 +1,31 @@
 {
-  "version": 1,
-  "buttons": {}
+  "version": 2,
+  "buttons": {
+    "Auto lock": {
+      "on": {
+        "system:focus_change": "211",
+        "system:screen_focus_lock": "1"
+      },
+      "off": {
+        "system:focus_change": "209",
+        "system:screen_focus_lock": "0"
+      }
+    },
+    "Estilo de control": {
+      "on": {
+        "system:focus_change": "213"
+      },
+      "off": {
+        "system:focus_change": "211"
+      }
+    },
+    "Vibración": {
+      "on": {
+        "system:focus_change": "215"
+      },
+      "off": {
+        "system:focus_change": "213"
+      }
+    }
+  }
 }
