@@ -82,7 +82,7 @@ fun Modifier.card(t: Tok, accent: Int? = null, radius: Dp = 32.dp): Modifier {
         this.shadow(10.dp, shape, ambientColor = Color(0x332B2A33), spotColor = Color(0x332B2A33))
             .background(if (accent != null) t.tile[accent % t.tile.size] else t.surf, shape)
     } else {
-        this.shadow(22.dp, shape, ambientColor = (ac ?: Color.Black).copy(alpha = 0.55f), spotColor = ac ?: Color.Black)
+        this.shadow(10.dp, shape, ambientColor = (ac ?: Color.Black).copy(alpha = 0.55f), spotColor = ac ?: Color.Black)
             .background(t.surf, shape)
             .then(if (accent != null) Modifier.background(t.tile[accent % t.tile.size], shape) else Modifier)
             .border(1.5.dp, ac?.copy(alpha = 0.75f) ?: t.line, shape)

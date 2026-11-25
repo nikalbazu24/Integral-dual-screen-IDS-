@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=7
+VERSION=8
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -151,11 +151,74 @@ telemetry() {
       [ -f "$h/fan1_input" ] && echo "fan=$(cat $h/fan1_input 2>/dev/null)"
     done
     echo "bl=$(ls /sys/class/backlight 2>/dev/null | tr '\n' ',')"
+    for b in /sys/class/backlight/*; do
+      [ -d "$b" ] || continue
+      m=$(cat "$b/max_brightness" 2>/dev/null); v=$(cat "$b/brightness" 2>/dev/null)
+      num "$m" && num "$v" && [ "$m" -gt 0 ] && echo "blp_$(basename $b)=$(( v * 100 / m ))"
+    done
     echo "leds=$(ls /sys/class/leds 2>/dev/null | tr '\n' ',')"
     echo "stock=$(pidof $STOCK)"
   } > "$D/tele.tmp"
   mv "$D/tele.tmp" "$D/tele.txt"
   own "$D/tele.txt"
+}
+
+# Revisión completa: prueba cada función, la lee de vuelta y la deja como estaba. Todo queda en Descargas/IDS.
+R=/data/media/0/Download/IDS
+chk() { # nombre esperado obtenido
+  if [ "$2" = "$3" ]; then echo "OK   $1 ($3)"; else echo "FALLA $1: se pidió '$2' y quedó '$3'"; fi
+}
+audit() {
+  mkdir -p "$R/apk"
+  {
+    echo "# Revisión IDS v$VERSION · $(date)"
+    echo "uid=$(id) modelo=$(getprop ro.product.model) build=$(getprop ro.build.display.id) android=$(getprop ro.build.version.release)"
+    echo; echo "## Pruebas"
+    for k in fan_mode performance_mode; do
+      old=$(settings get system $k)
+      if [ $k = fan_mode ]; then new=4; [ "$old" = "4" ] && new=1; else new=1; [ "$old" = "1" ] && new=0; fi
+      settings put system $k $new; sleep 1; chk "ajuste $k" "$new" "$(settings get system $k)"; settings put system $k "$old"
+    done
+    old=$(settings get system screen_brightness); settings put system screen_brightness 77; sleep 1
+    chk "brillo arriba (screen_brightness)" 77 "$(settings get system screen_brightness)"; settings put system screen_brightness "$old"
+    for b in /sys/class/backlight/*; do
+      [ -d "$b" ] || continue
+      m=$(cat $b/max_brightness 2>/dev/null); o=$(cat $b/brightness 2>/dev/null); want=$(( m / 2 ))
+      echo "$want" > $b/brightness 2>/dev/null; sleep 1
+      echo "     backlight $(basename $b): max=$m antes=$o actual_brightness=$(cat $b/actual_brightness 2>/dev/null)"
+      chk "backlight $(basename $b) a la mitad" "$want" "$(cat $b/brightness 2>/dev/null)"; echo "$o" > $b/brightness 2>/dev/null
+    done
+    for p in 0 3 7; do
+      c=/sys/devices/system/cpu/cpufreq/policy$p; [ -d $c ] || continue
+      old=$(cat $c/scaling_max_freq); lst=$(cat $c/scaling_available_frequencies 2>/dev/null)
+      want=$(echo $lst | tr ' ' '\n' | sort -n | awk '{a[NR]=$1} END {print a[int(NR/2)+1]}')
+      echo "     cpu policy$p: frecuencias: $lst"
+      [ -n "$want" ] && { echo "$want" > $c/scaling_max_freq 2>/dev/null; sleep 2; chk "tope CPU policy$p (a los 2 s)" "$want" "$(cat $c/scaling_max_freq)"; echo "$old" > $c/scaling_max_freq; }
+    done
+    g=/sys/class/kgsl/kgsl-3d0
+    old=$(cat $g/max_gpuclk 2>/dev/null); echo "     gpu: disponibles=$(cat $g/gpu_available_frequencies 2>/dev/null) max_gpuclk=$old"
+    want=$(cat $g/gpu_available_frequencies 2>/dev/null | tr ' ' '\n' | sort -n | awk '{a[NR]=$1} END {print a[int(NR/2)+1]}')
+    [ -n "$want" ] && { echo "$want" > $g/max_gpuclk 2>/dev/null; sleep 2; chk "tope GPU max_gpuclk" "$want" "$(cat $g/max_gpuclk)"; echo "$old" > $g/max_gpuclk; }
+    ls -d /sys/class/devfreq/*gpu* /sys/class/devfreq/*kgsl* 2>/dev/null | while read d; do echo "     devfreq $d: max_freq=$(cat $d/max_freq 2>/dev/null) disponibles=$(cat $d/available_frequencies 2>/dev/null)"; done
+    w=$(settings get global wifi_on); echo "     wifi_on=$w bluetooth_on=$(settings get global bluetooth_on) zen_mode=$(settings get global zen_mode)"
+    echo; echo "## Luces (/sys/class/leds)"
+    for l in /sys/class/leds/*; do echo "$(basename $l): max=$(cat $l/max_brightness 2>/dev/null) brillo=$(cat $l/brightness 2>/dev/null) archivos=$(ls $l | tr '\n' ' ')"; done
+    echo; echo "## Pantallas"; dumpsys display 2>/dev/null | grep -E "mDisplayId=|mBrightness|mUniqueId|DisplayDeviceInfo\{" | head -40
+    echo; echo "## Paquetes de AYN / Odin"; pm list packages -f 2>/dev/null | grep -iE "odin|ayn|thor|dual|pserver"
+    echo "## Desactivados"; pm list packages -d 2>/dev/null
+    echo; echo "## Servicios del sistema (AYN)"; service list 2>/dev/null | grep -iE "odin|ayn|pserver|fan|led|light|perf|game"
+    echo; echo "## Procesos"; ps -A -o PID,USER,NAME 2>/dev/null | grep -iE "odin|ayn|fan|led|light|perf|dual"
+    echo; echo "## Ajustes system"; settings list system; echo "## Ajustes global"; settings list global; echo "## Ajustes secure"; settings list secure
+    echo; echo "## Propiedades AYN"; getprop | grep -iE "odin|ayn|fan|led|perf|persist.vendor.*(mode|light)"
+  } > "$R/revision.txt" 2>&1
+  for k in $(pm list packages 2>/dev/null | sed 's/package://' | grep -iE "odin|ayn|thor"); do
+    okpkg "$k" || continue
+    pm path "$k" 2>/dev/null | sed 's/package://' | while read f; do cp "$f" "$R/apk/${k}_$(basename $f)" 2>/dev/null; done
+  done
+  chmod -R 777 "$R" 2>/dev/null
+  cp "$R/revision.txt" "$D/revision.txt"; own "$D/revision.txt"
+  am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d "file:///sdcard/Download/IDS/revision.txt" >/dev/null 2>&1
+  echo done > "$D/audit.ok"; own "$D/audit.ok"
 }
 
 run() {
@@ -167,7 +230,12 @@ run() {
     bright) num "$a" && settings put system screen_brightness "$a";;
     blight)
       case "$a" in ''|*/*|*..*) return;; esac
-      num "$b" && echo "$b" > "/sys/class/backlight/$a/brightness";;
+      num "$b" || return
+      [ "$b" -gt 100 ] && b=100
+      m=$(cat "/sys/class/backlight/$a/max_brightness" 2>/dev/null); num "$m" || m=255
+      echo $(( b * m / 100 )) > "/sys/class/backlight/$a/brightness";;
+    tempunblock) for k in $(stock_list | sort -u); do okpkg "$k" && pm enable "$k" >/dev/null 2>&1; done;;
+    audit) rm -f "$D/audit.ok"; audit </dev/null >/dev/null 2>&1 &;;
     cap)
       case "$a" in 0|3|7) ;; *) return;; esac
       num "$b" && echo "$b" > "/sys/devices/system/cpu/cpufreq/policy$a/scaling_max_freq";;

@@ -109,6 +109,8 @@ class PanelService : Service() {
                         Store.update { it.copy(aynKey = k.first) }
                         Store.learningKey.value = false
                         Store.toast("Botón guardado: ${k.first}")
+                    } else if (Store.learningSetting.value != null) {
+                        // Aprendiendo un botón: el botón AYN abre el panel de fábrica, IDS no se mete
                     } else if (k.first == Store.settings.value.aynKey && k.first.isNotBlank()) {
                         toggle()
                         val st = Store.settings.value
@@ -125,6 +127,7 @@ class PanelService : Service() {
                     .onFailure { ErrorReporter.report("telemetría", it) }
                 tickTimer()
                 Device.smartTick(Store.tele.value.socC)
+                if (Store.panelVisible.value && ledTick % 2 == 0) Device.refreshStates()
                 ledTick++
                 val fx = Store.settings.value.effect
                 if ((fx == "Según temperatura" && ledTick % 5 == 0) || (fx == "Según batería" && ledTick % 60 == 0)) Device.applyLeds()
@@ -222,6 +225,7 @@ class PanelService : Service() {
             fanRpm = i("fan"),
             ramUsedGb = (mi.totalMem - mi.availMem) / gb, ramTotalGb = mi.totalMem / gb,
             backlights = m["bl"].orEmpty().split(',').filter { it.isNotBlank() },
+            blPct = m.filterKeys { it.startsWith("blp_") }.mapNotNull { (k, v) -> v.toIntOrNull()?.let { k.removePrefix("blp_") to it } }.toMap(),
             leds = m["leds"].orEmpty().split(',').filter { it.isNotBlank() },
             helperAlive = Helper.alive(),
             maxTodayC = maxOf(prev.maxTodayC, soc ?: 0f),

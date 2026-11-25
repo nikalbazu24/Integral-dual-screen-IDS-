@@ -164,6 +164,7 @@ private fun Setup() {
                                 val n = Device.finishLearning(name)
                                 Store.learningSetting.value = null
                                 if (s.replaceStock) Helper.send("freeze")
+                                if (s.permStock) Helper.send("blockperm")
                                 Store.toast(if (n > 0) "Listo: “$name” aprendido" else "No se detectó ningún cambio. Prueba de nuevo.")
                                 toastText = if (n > 0) "“$name” aprendido ($n ajuste${if (n > 1) "s" else ""})" else "No se detectó cambio en “$name”. Intenta otra vez."
                             }
@@ -171,6 +172,7 @@ private fun Setup() {
                         Pill("Cancelar", false, Modifier.width(200.dp), 58.dp) {
                             Store.learningSetting.value = null
                             if (s.replaceStock) Helper.send("freeze")
+                            if (s.permStock) Helper.send("blockperm")
                         }
                     }
                     if (toastText.isNotEmpty()) T(toastText, 17.sp, FontWeight.Black, t.v[1])
@@ -195,12 +197,31 @@ private fun Setup() {
                             }
                             Pill("Aprender", learningName == name, Modifier.width(170.dp), 48.dp, 16.sp) {
                                 // Despierta el panel de fábrica y toma la primera foto de los ajustes
+                                if (s.permStock) Helper.send("tempunblock")
                                 Helper.send("thaw", "snap 1")
                                 Store.learningSetting.value = name
-                                toastText = ""
+                                toastText = if (s.permStock) "El panel de AYN volvió por un momento: presiona el botón AYN, toca “$name” y vuelve aquí." else ""
                             }
-                            if (mine != null) Pill("Olvidar", false, Modifier.width(150.dp), 48.dp, 16.sp) { Device.forget(name) }
+                            if (learned != null) Pill("Invertir", false, Modifier.width(140.dp), 48.dp, 16.sp) { Device.invert(name); Store.toast("“$name” invertido") }
+                            if (mine != null) Pill("Olvidar", false, Modifier.width(140.dp), 48.dp, 16.sp) { Device.forget(name) }
                         }
+                    }
+                }
+                Card(accent = 1) {
+                    T("Revisión completa de la consola", 24.sp, FontWeight.Black)
+                    T("Prueba cada función de verdad (ventilador, rendimiento, brillo de las dos pantallas, topes de CPU y GPU, luces), " +
+                        "revisa si la consola la acepta y la deja como estaba. Demora unos 20 segundos. El resultado queda en Descargas › IDS › revision.txt, " +
+                        "junto con las apps de AYN en Descargas › IDS › apk. Mándame esos archivos para conectar todo con lo que usa AYN.",
+                        16.sp, FontWeight.Bold, t.mu, maxLines = 6)
+                    var auditing by remember { mutableStateOf(false) }
+                    val auditDone = remember(tick) { Helper.auditDone() }
+                    Pill(if (auditing && !auditDone) "Revisando… no cierres la app" else "Hacer la revisión", !auditing || auditDone, Modifier.fillMaxWidth(), 58.dp) {
+                        auditing = true
+                        Helper.send("audit")
+                    }
+                    if (auditing && auditDone) {
+                        val res = remember(tick) { Helper.auditSummary() }
+                        T(res, 15.sp, FontWeight.Bold, if (res.contains("FALLA")) t.v[0] else t.v[1], maxLines = 24)
                     }
                 }
                 Card {

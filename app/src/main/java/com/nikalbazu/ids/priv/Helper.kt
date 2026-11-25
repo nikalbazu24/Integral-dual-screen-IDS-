@@ -16,7 +16,7 @@ object Helper {
     private lateinit var ctx: Context
     private var lastLaunch = 0L
     var method: String = "ninguno"; private set
-    private const val VERSION = "7"
+    private const val VERSION = "8"
     /** Todo lo que toca archivos va en segundo plano para que el panel nunca se trabe. */
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "ids-helper").apply { isDaemon = true } }
 
@@ -91,6 +91,13 @@ object Helper {
     fun readBlock(): List<Pair<String, String>> = runCatching {
         File(dir, "block.txt").readLines().mapNotNull { l -> l.trim().split(" ").takeIf { it.size == 2 }?.let { it[0] to it[1] } }
     }.getOrDefault(emptyList())
+
+    fun auditDone(): Boolean = File(dir, "audit.ok").let { it.exists() && System.currentTimeMillis() - it.lastModified() < 30 * 60_000 }
+
+    /** Las líneas OK / FALLA de la revisión. */
+    fun auditSummary(): String = runCatching {
+        File(dir, "revision.txt").readLines().filter { it.startsWith("OK") || it.startsWith("FALLA") }.joinToString("\n")
+    }.getOrDefault("").ifBlank { "Listo. Abre Descargas › IDS › revision.txt" }
 
     fun readDiag(): String = runCatching { File(dir, "diag.txt").readText() }.getOrDefault("")
 

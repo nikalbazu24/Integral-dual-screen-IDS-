@@ -88,13 +88,15 @@ object Device {
 
     fun setTopBrightness(pct: Int) = Helper.send("bright ${(pct.coerceIn(1, 100) * 255) / 100}")
 
+    /** Brillo de la pantalla de abajo en % real (la app lo escala al máximo que acepta esa pantalla). */
     fun setBottomBrightness(pct: Int) {
-        val bl = Store.tele.value.backlights
-        val name = bl.getOrNull(1) ?: bl.firstOrNull() ?: return
-        Helper.send("blight $name ${(pct.coerceIn(1, 100) * 255) / 100}")
-        bottomPct = pct
+        val name = bottomBacklight() ?: return
+        Helper.send("blight $name ${pct.coerceIn(1, 100)}")
+        bottomSet = pct
     }
-    var bottomPct = 50; private set
+    private var bottomSet = -1
+    val bottomPct: Int get() = if (bottomSet > 0) bottomSet else Store.tele.value.blPct[bottomBacklight() ?: ""] ?: 50
+    private fun bottomBacklight(): String? { val bl = Store.tele.value.backlights; return bl.getOrNull(1) ?: bl.firstOrNull() }
 
     fun volume(stream: Int = AudioManager.STREAM_MUSIC): Int = runCatching {
         val am = ctx.getSystemService(AudioManager::class.java)
@@ -114,7 +116,7 @@ object Device {
         val bl = Store.tele.value.backlights
         val top = bl.getOrNull(0); val bottom = bl.getOrNull(1)
         when (mode) {
-            "Dos" -> { top?.let { Helper.send("blight $it 180") }; bottom?.let { Helper.send("blight $it 160") } }
+            "Dos" -> { top?.let { Helper.send("blight $it ${topBrightness().coerceAtLeast(20)}") }; bottom?.let { Helper.send("blight $it ${bottomPct.coerceAtLeast(20)}") } }
             "Arriba" -> bottom?.let { Helper.send("blight $it 0") }
             "Abajo" -> top?.let { Helper.send("blight $it 0") }
         }
@@ -152,13 +154,38 @@ object Device {
         val changed = after.filter { (k, v) -> before[k] != v && !noisy.containsMatchIn(k) && v.isNotBlank() && !v.contains(' ') }
         if (changed.isNotEmpty()) {
             val off = changed.mapValues { (k, _) -> before[k] ?: "0" }
-            Store.update { it.copy(learned = it.learned + (name to com.nikalbazu.ids.core.Learned(changed, off))) }
+            // Si al tocarlo el botón se APAGÓ, la foto de "después" es el estado apagado: se dan vuelta.
+            fun offness(m: Map<String, String>) = m.values.count { it == "0" || it.equals("false", true) || it.equals("off", true) }
+            val inverted = offness(changed) > offness(off)
+            val l = if (inverted) com.nikalbazu.ids.core.Learned(off, changed) else com.nikalbazu.ids.core.Learned(changed, off)
+            Store.update { it.copy(learned = it.learned + (name to l)) }
             Store.log("Aprendido: $name (${changed.keys.joinToString { it.substringAfter(':') }})", "AYN")
         }
         return changed.size
     }
 
     fun forget(name: String) = Store.update { it.copy(learned = it.learned - name) }
+
+    /** Por si un botón aprendido quedó al revés (dice encendido cuando está apagado). */
+    fun invert(name: String) = Store.update { s ->
+        val l = s.learned[name] ?: com.nikalbazu.ids.core.Community.all()[name] ?: return@update s
+        s.copy(learned = s.learned + (name to com.nikalbazu.ids.core.Learned(l.off, l.on)))
+    }.also { refreshStates() }
+
+    // ---- Estado de los botones: se lee en segundo plano (nunca en la pantalla), así no hay tirones ----
+    val states = kotlinx.coroutines.flow.MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    private val pending = java.util.concurrent.ConcurrentHashMap<String, Pair<Boolean, Long>>()
+    private val stateIo = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "ids-states").apply { isDaemon = true } }
+    private val WATCH = listOf("Wi‑Fi", "Bluetooth", "No molestar", "Carga 80 %", "Ratón virtual", "Gatillos L2/R2", "Force landscape")
+
+    fun refreshStates() = stateIo.execute {
+        val now = System.currentTimeMillis()
+        val names = (WATCH + STOCK_BUTTONS + com.nikalbazu.ids.core.Community.all().keys).distinct()
+        states.value = names.associateWith { n ->
+            val p = pending[n]
+            if (p != null && now < p.second) p.first else { pending.remove(n); isOn(n) }
+        }
+    }
 
     // ---- Accesos rápidos ----
     fun isOn(name: String): Boolean = runCatching {
@@ -172,7 +199,10 @@ object Device {
     }.getOrDefault(false)
 
     fun toggle(name: String) {
-        val on = !isOn(name)
+        val on = !(states.value[name] ?: isOn(name))
+        // Se muestra el cambio al instante; la lectura real lo confirma a los 4 s
+        pending[name] = on to System.currentTimeMillis() + 4000
+        states.value = states.value + (name to on)
         if (name in com.nikalbazu.ids.core.Community.all()) { applyLearned(name, on); return }
         if (name in STOCK_BUTTONS) { Store.toast("Enséñale este botón: pantalla de arriba › Aprender botones de AYN"); return }
         when (name) {

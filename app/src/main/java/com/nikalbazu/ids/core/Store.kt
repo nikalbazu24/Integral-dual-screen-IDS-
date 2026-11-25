@@ -98,6 +98,8 @@ data class Tele(
     val ramUsedGb: Float = 0f,
     val ramTotalGb: Float = 0f,
     val backlights: List<String> = emptyList(),
+    /** Brillo real de cada pantalla en % (leído del sistema). */
+    val blPct: Map<String, Int> = emptyMap(),
     val leds: List<String> = emptyList(),
     val helperAlive: Boolean = false,
     val maxTodayC: Float = 0f,

@@ -268,7 +268,12 @@ private fun ConsolaCard(modifier: Modifier) {
 private fun CtCard(modifier: Modifier) {
     val t = LocalTok.current
     val s by Store.settings.collectAsState()
-    val p = s.caps["p"] ?: Freq.STOCK.getValue("p"); val g = s.caps["gpu"] ?: Freq.STOCK.getValue("gpu")
+    val tele by Store.tele.collectAsState()
+    // Los anillos muestran el tope REAL que tiene la consola ahora (no lo que se pidió)
+    val wantP = s.caps["p"] ?: Freq.STOCK.getValue("p"); val wantG = s.caps["gpu"] ?: Freq.STOCK.getValue("gpu")
+    val p = tele.cpuMax["7"] ?: wantP
+    val g = tele.gpuMaxHz?.toInt()?.takeIf { it > 0 } ?: wantG
+    val applied = tele.cpuMax["7"] == null || kotlin.math.abs(p - wantP) < 120_000
     val own = s.ctOwner == "Esta app"
     Column(modifier.card(t, 3, 36.dp).padding(horizontal = 24.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
@@ -295,7 +300,7 @@ private fun CtCard(modifier: Modifier) {
         Row(Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(19.dp)).background(t.track),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
             T("●  ", 15.sp, FontWeight.Black, if (own && s.autoTune) t.v[1] else t.mu)
-            T("Auto Tune · " + when {
+            T(if (!applied) "Aviso · la consola tiene otro tope (lo cambió AYN o la app ClusterTune)" else "Auto Tune · " + when {
                 !own -> "lo controla la app ClusterTune"
                 s.autoTune -> "activo, ajusta los topes según el juego"
                 else -> "apagado"
@@ -311,8 +316,8 @@ private fun AccessRow() {
     val s by Store.settings.collectAsState()
     val community by com.nikalbazu.ids.core.Community.buttons.collectAsState()
     val cleaned by Device.cleaned.collectAsState()
-    var tick by remember { mutableIntStateOf(0) }
-    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(2000); tick++ } }
+    val states by Device.states.collectAsState()
+    LaunchedEffect(Unit) { Device.refreshStates() }
     val items = listOf(
         listOf("Direct power supply", Ico.POWER, "Usa el cargador, no la batería", 4),
         listOf("Force landscape", Ico.LAND, "Pantalla siempre acostada", 2),
@@ -323,7 +328,7 @@ private fun AccessRow() {
         items.forEach { (nameA, icoA, hintA, colA) ->
             val name = nameA as String; val ico = icoA as String; val col = t.v[(colA as Int) % t.v.size]
             val action = name == "Clean memory"
-            val on = !action && remember(tick, s.learned, s.toggles, community) { Device.isOn(name) }
+            val on = !action && (states[name] ?: false)
             val needsLearn = name in Device.STOCK_BUTTONS && name !in com.nikalbazu.ids.core.Community.all()
             val hint = when {
                 action -> cleaned.ifBlank { hintA as String }
@@ -334,7 +339,7 @@ private fun AccessRow() {
             val shape = RoundedCornerShape(32.dp)
             val base = if (on) Modifier.shadow(12.dp, shape, ambientColor = t.sel.copy(alpha = 0.4f), spotColor = t.sel.copy(alpha = 0.5f)).background(t.sel, shape)
                 else Modifier.background(t.track, shape)
-            Row(Modifier.weight(1f).fillMaxHeight().then(base).clip(shape).tap { Device.toggle(name); tick++ }.padding(horizontal = 12.dp),
+            Row(Modifier.weight(1f).fillMaxHeight().then(base).clip(shape).tap { Device.toggle(name) }.padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Box(Modifier.size(42.dp).clip(RoundedCornerShape(21.dp)).background(if (on) Color.Black.copy(alpha = 0.12f) else col.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center) { Icon(ico, if (on) t.selTx else col, 24.dp) }
@@ -417,11 +422,11 @@ private fun HwShortcuts() {
 @Composable
 private fun QuickRow(modifier: Modifier) {
     val t = LocalTok.current
-    var tick by remember { mutableIntStateOf(0) }
+    val states by Device.states.collectAsState()
     Row(modifier.card(t).padding(horizontal = 18.dp, vertical = 14.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         listOf("Wi‑Fi", "Bluetooth", "No molestar", "Carga 80 %", "Ratón virtual", "Captura").forEach { name ->
-            val on = remember(tick) { Device.isOn(name) }
-            Column(Modifier.weight(1f).tap { Device.toggle(name); tick++ }, horizontalAlignment = Alignment.CenterHorizontally,
+            val on = states[name] ?: false
+            Column(Modifier.weight(1f).tap { Device.toggle(name) }, horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Box(Modifier.size(68.dp).clip(RoundedCornerShape(34.dp)).background(if (on) t.sel else t.track), contentAlignment = Alignment.Center) {
                     T(if (on) "●" else "○", 24.sp, FontWeight.Black, if (on) t.selTx else t.tx)
@@ -478,16 +483,17 @@ fun ControlScreen() {
         val names = listOf("Wi‑Fi", "Bluetooth", "No molestar", "Captura") +
             Device.STOCK_BUTTONS.take(5) + Device.STOCK_BUTTONS.drop(5).filter { it in learned } +
             listOf("Carga 80 %", "Ratón virtual", "Gatillos L2/R2")
-        LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(1500); tick++ } }
+        val states by Device.states.collectAsState()
+        LaunchedEffect(Unit) { Device.refreshStates() }
         Grid(4, names.size) { i ->
             val n = names[i]
-            val on = remember(tick, s.learned, community) { Device.isOn(n) }
+            val on = states[n] ?: false
             val hint = when {
                 n in learned -> "Botón de AYN"
                 n in Device.STOCK_BUTTONS -> "Sin aprender"
                 else -> ""
             }
-            ToggleCard(n, hint, on, Modifier.weight(1f)) { Device.toggle(n); tick++ }
+            ToggleCard(n, hint, on, Modifier.weight(1f)) { Device.toggle(n) }
         }
         T("Los botones de AYN se enseñan una vez en la pantalla de arriba (Aprender botones de AYN) y desde ahí funcionan aquí.", 17.sp, FontWeight.Bold, t.mu)
     }
