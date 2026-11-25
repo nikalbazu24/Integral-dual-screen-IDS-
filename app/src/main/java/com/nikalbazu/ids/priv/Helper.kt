@@ -17,7 +17,7 @@ object Helper {
     private lateinit var ctx: Context
     private var lastLaunch = 0L
     var method: String = "ninguno"; private set
-    private const val VERSION = "11"
+    private const val VERSION = "12"
     /** Todo lo que toca archivos va en segundo plano para que el panel nunca se trabe. */
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "ids-helper").apply { isDaemon = true } }
 
@@ -29,9 +29,11 @@ object Helper {
     private val rootPath get() = "/data/media/0/Android/data/${ctx.packageName}/files/h/ids_helper.sh"
 
     /** Telemetría reciente = ayudante vivo. */
+    /** Vivo = latido reciente (lo escribe un hilo aparte del ayudante, aunque esté ocupado). */
     fun alive(): Boolean {
-        val f = File(dir, "tele.txt")
-        return f.exists() && System.currentTimeMillis() - f.lastModified() < 6000
+        val now = System.currentTimeMillis()
+        val hb = File(dir, "hb"); val tele = File(dir, "tele.txt")
+        return (hb.exists() && now - hb.lastModified() < 10_000) || (tele.exists() && now - tele.lastModified() < 10_000)
     }
 
     fun ensureRunning() {

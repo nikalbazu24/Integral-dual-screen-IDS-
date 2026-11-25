@@ -195,7 +195,7 @@ fun HardwareScreen() {
         when (nav.hwTab) {
             "led" -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Card(Modifier.weight(2f).height(560.dp)) {
+                    Card(Modifier.weight(2f).height(640.dp)) {
                         Spacer(Modifier.weight(1f))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                             listOf("l" to "Stick izquierdo", "r" to "Stick derecho").forEach { (k, name) ->
@@ -225,9 +225,12 @@ fun HardwareScreen() {
                                 ColorWheel(live, Modifier.size(230.dp)) { c, final ->
                                     live = c
                                     val now = System.currentTimeMillis()
-                                    if (final || now - lastSent > 250) {
+                                    if (final || now - lastSent > 350) {
                                         lastSent = now
-                                        val hex = 0xFF000000 or (c.toArgb().toLong() and 0xFFFFFF)
+                                        // La rueda elige tono y saturación; se mantiene la intensidad que ya tenía
+                                        val keepV = FloatArray(3).also { android.graphics.Color.colorToHSV((cur and 0xFFFFFF).toInt() or 0xFF000000.toInt(), it) }[2].coerceAtLeast(0.05f)
+                                        val ph = FloatArray(3).also { android.graphics.Color.colorToHSV(c.toArgb(), it) }
+                                        val hex = 0xFF000000 or (android.graphics.Color.HSVToColor(floatArrayOf(ph[0], ph[1], keepV)).toLong() and 0xFFFFFF)
                                         Store.update { st ->
                                             val base = if (st.effect == "Apagadas") st.copy(effect = "Fijo") else st
                                             if (base.ledSame) base.copy(ledL = hex, ledR = hex)
@@ -254,8 +257,22 @@ fun HardwareScreen() {
                                     }
                                 }
                             }
+                            // Intensidad = qué tan vivo/oscuro es el color elegido · Brillo = potencia de las luces
+                            val hsv = FloatArray(3).also { android.graphics.Color.colorToHSV((cur and 0xFFFFFF).toInt() or 0xFF000000.toInt(), it) }
+                            var inten by remember(cur) { mutableIntStateOf((hsv[2] * 100).toInt().coerceIn(5, 100)) }
+                            StepBar("Intensidad del color · $inten %", inten / 100f, live.copy(alpha = 0.55f), height = 60.dp,
+                                onMinus = {}, onPlus = {},
+                                onSlide = { f -> inten = (f * 100).toInt().coerceIn(5, 100) },
+                                onRelease = {
+                                    val c = android.graphics.Color.HSVToColor(floatArrayOf(hsv[0], hsv[1], inten / 100f))
+                                    val hex = 0xFF000000 or (c.toLong() and 0xFFFFFF)
+                                    Store.update { st ->
+                                        if (st.ledSame) st.copy(ledL = hex, ledR = hex) else if (nav.ledSide == "l") st.copy(ledL = hex) else st.copy(ledR = hex)
+                                    }
+                                    Device.applyLeds()
+                                })
                             var ledB by remember(s.ledBright) { mutableIntStateOf(s.ledBright) }
-                            StepBar("Intensidad · $ledB %", ledB / 100f, live.copy(alpha = 0.55f), height = 60.dp,
+                            StepBar("Brillo de las luces · $ledB %", ledB / 100f, t.v[4].copy(alpha = 0.45f), height = 60.dp,
                                 onMinus = {}, onPlus = {},
                                 onSlide = { f -> ledB = (f * 100).toInt().coerceIn(1, 100) },
                                 onRelease = { Store.update { it.copy(ledBright = ledB) }; Device.applyLeds() })

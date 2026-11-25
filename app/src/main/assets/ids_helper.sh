@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=11
+VERSION=12
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -60,6 +60,7 @@ cleanup() {
   [ -f "$D/block.on" ] && [ ! -f "$D/perm.on" ] && unblock
   fx_stop
   [ -n "$KW" ] && kill "$KW" 2>/dev/null
+  [ -n "$HB" ] && kill "$HB" 2>/dev/null
   pkill -f "getevent -ql" 2>/dev/null
   rm -f "$D/helper.pid"
   exit 0
@@ -109,11 +110,14 @@ led_set() { # lado r g b brillo
 }
 
 # Luces de los sticks: las aplica el sistema de AYN al cambiar estos ajustes
-lights_set() { # encendido colorIzq colorDer brillo%
-  if [ "$1" = 0 ]; then settings put system joystick_light_enabled "0,0"; return; fi
-  settings put system joystick_led_light_picker_color "#ff$2,#ff$3"
-  settings put system led_light_brightness_percent "$(awk "BEGIN{printf \"%.2f\", $4/100}")"
-  [ "$(settings get system joystick_light_enabled)" = "1,1" ] || settings put system joystick_light_enabled "1,1"
+LC=""; LB=""; LON=""
+lights_set() { # encendido colorIzq colorDer brillo%  (solo escribe lo que cambió: así responde rápido)
+  if [ "$1" = 0 ]; then settings put system joystick_light_enabled "0,0"; LON=0; return; fi
+  col="#ff$2,#ff$3"
+  [ "$col" != "$LC" ] && { settings put system joystick_led_light_picker_color "$col"; LC="$col"; }
+  if [ "$4" -ge 100 ]; then bf="1.0"; else bf=$(printf '0.%02d' "$4"); fi
+  [ "$bf" != "$LB" ] && { settings put system led_light_brightness_percent "$bf"; LB="$bf"; }
+  [ "$LON" = 1 ] || { settings put system joystick_light_enabled "1,1"; LON=1; }
 }
 
 FXP=""
@@ -299,14 +303,14 @@ run() {
       fx_stop; lights_set 1 "$a" "$a" "$b"
       r=$((16#${a%????})); g=$((16#$(echo $a | cut -c3-4))); bl=$((16#${a#????}))
       ( while true; do for k in 100 85 68 52 38 28 38 52 68 85; do
-          settings put system joystick_led_light_picker_color "$(printf '#ff%02X%02X%02X,#ff%02X%02X%02X' $((r*k/100)) $((g*k/100)) $((bl*k/100)) $((r*k/100)) $((g*k/100)) $((bl*k/100)))"
+          LC=""; settings put system joystick_led_light_picker_color "$(printf '#ff%02X%02X%02X,#ff%02X%02X%02X' $((r*k/100)) $((g*k/100)) $((bl*k/100)) $((r*k/100)) $((g*k/100)) $((bl*k/100)))"
           sleep 0.3; done; done ) &
       FXP=$!;;
     fxr)
       num "$a" || return
       fx_stop; lights_set 1 FF0000 FF0000 "$a"
       ( while true; do for col in FF0000 FF6E00 FFDC00 5AFF00 00FFA0 00A0FF 3C00FF C800FF FF008C; do
-          settings put system joystick_led_light_picker_color "#ff$col,#ff$col"; sleep 0.5; done; done ) &
+          LC=""; settings put system joystick_led_light_picker_color "#ff$col,#ff$col"; sleep 0.5; done; done ) &
       FXP=$!;;
     dbright)
       # Brillo de la pantalla de abajo como lo hace AYN: DisplayManager.setBrightness(pantalla, 0..1)
@@ -358,6 +362,11 @@ run() {
     own "$D/key.evt"
   done ) &
 KW=$!
+
+# Latido: avisa a la app que el ayudante está vivo aunque esté ocupado aplicando algo
+: > "$D/hb"; own "$D/hb"
+( while true; do : > "$D/hb"; sleep 1; done ) &
+HB=$!
 
 miss=0
 n=0
