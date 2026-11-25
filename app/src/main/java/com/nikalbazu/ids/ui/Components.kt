@@ -119,14 +119,14 @@ fun Pill(
     onClick: () -> Unit,
 ) {
     val t = LocalTok.current
-    val shape = RoundedCornerShape(height / 2)
+    val shape = if (height == Dp.Unspecified) RoundedCornerShape(50) else RoundedCornerShape(height / 2)
     val base = if (selected) {
         (if (t.light) modifier.shadow(6.dp, shape, ambientColor = t.sel.copy(alpha = 0.4f), spotColor = t.sel.copy(alpha = 0.5f)) else modifier)
             .background(t.sel, shape)
     } else {
         modifier.background(t.track, shape).border(1.dp, if (t.light) Color(0x142B2A33) else Color.White.copy(alpha = 0.07f), shape)
     }
-    Box(base.height(height).clip(shape).tap(onClick).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
+    Box((if (height == Dp.Unspecified) base else base.height(height)).clip(shape).tap(onClick).padding(horizontal = 14.dp), contentAlignment = Alignment.Center) {
         T(label, size, FontWeight.ExtraBold, if (selected) t.selTx else t.tx, maxLines = 1, align = TextAlign.Center)
     }
 }

@@ -69,34 +69,9 @@ fun tempState(c: Float): String = when {
 
 @Composable
 fun InicioScreen() {
-    val s by Store.settings.collectAsState()
-    val w = s.widgets
     var pop by remember { mutableStateOf<String?>(null) }
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val full = maxHeight
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Column(Modifier.fillMaxWidth().height(full), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    if ("sliders" in w) BrightBar { pop = "brillo" }
-                    Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        if ("temp" in w || "consola" in w) Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            if ("temp" in w) TempCard(Modifier.weight(1f).fillMaxHeight())
-                            if ("consola" in w) ConsolaCard(Modifier.weight(1.15f).fillMaxHeight())
-                        }
-                        AccessRow()
-                        if ("ct" in w) CtCard(Modifier.fillMaxWidth().height(250.dp))
-                    }
-                    if ("sliders" in w) VolumeBar { pop = "volumen" }
-                }
-                if ("stats" in w) StatsStrip()
-            }
-            if ("now" in w) NowStrip()
-            if ("hw" in w) HwShortcuts()
-            if ("quick" in w || "music" in w) Row(Modifier.height(140.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if ("quick" in w) QuickRow(Modifier.weight(3f).fillMaxHeight())
-                if ("music" in w) MusicCard(Modifier.weight(1f).fillMaxHeight())
-            }
-        }
+    Box(Modifier.fillMaxSize()) {
+        TileBoard { pop = it }
         AnimatedVisibility(pop != null, enter = fadeIn() + scaleIn(initialScale = 0.94f), exit = fadeOut() + scaleOut(targetScale = 0.94f)) {
             Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.6f)).tap { pop = null }, contentAlignment = Alignment.Center) {
                 when (pop) {

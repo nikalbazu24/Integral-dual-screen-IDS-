@@ -27,6 +27,8 @@ object Ico {
     const val POWER = "M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0zM12 17v5"
     const val LAND = "M4.5 7h15A2.5 2.5 0 0 1 22 9.5v6a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 15.5v-6A2.5 2.5 0 0 1 4.5 7zM6 4.5c2-1.5 4.5-2 7-1.3M13 1.5l.5 1.8-1.8.5"
     const val AIM = "M5 12a7 7 0 1 0 14 0a7 7 0 1 0-14 0M10 12a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 2v4M12 18v4M2 12h4M18 12h4"
+    const val ROTATE = "M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"
+    const val RESIZE = "M20 10v10H10M20 20 9 9"
     const val RAM = "M3 7h18v10H3zM7 7v10M11 7v10M15 7v10M5 17v3M19 17v3"
 }
 

@@ -62,7 +62,8 @@ fun PanelRoot() {
                     scaleOut(tween(260), targetScale = 0.96f),
             ) {
                 Column(Modifier.fillMaxSize().background(tok.bg).padding(horizontal = 32.dp, vertical = 20.dp)) {
-                    StatusBar()
+                    LaunchedEffect(nav.sec, visible) { if (nav.sec != "inicio" || !visible) { Store.editing.value = false; Store.tray.value = false } }
+                    StatusBar(nav.sec == "inicio")
                     Spacer(Modifier.height(14.dp))
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         Crossfade(nav.sec, animationSpec = tween(180), label = "seccion") { sec ->
@@ -87,7 +88,7 @@ fun PanelRoot() {
 }
 
 @Composable
-private fun StatusBar() {
+private fun StatusBar(inicio: Boolean) {
     val t = LocalTok.current
     val tele by Store.tele.collectAsState()
     var now by remember { mutableStateOf(Date()) }
@@ -99,6 +100,21 @@ private fun StatusBar() {
         Spacer(Modifier.width(14.dp))
         T(date, 24.sp, FontWeight.Bold, t.mu, maxLines = 1)
         Spacer(Modifier.weight(1f))
+        if (inicio) {
+            val editing by Store.editing.collectAsState()
+            if (editing) {
+                Pill("+ Agregar tarjeta", false, height = 50.dp, size = 18.sp) { Store.tray.value = true }
+                Spacer(Modifier.width(10.dp))
+                Pill("Restablecer", false, height = 50.dp, size = 18.sp) {
+                    Store.update { it.copy(layout = com.nikalbazu.ids.core.Grid.DEFAULT) }; Store.toast("Inicio restablecido")
+                }
+                Spacer(Modifier.width(10.dp))
+            }
+            Pill(if (editing) "Listo" else "Editar inicio", editing, height = 50.dp, size = 18.sp) {
+                Store.editing.value = !editing; Store.tray.value = false
+            }
+            Spacer(Modifier.width(16.dp))
+        }
         if (!tele.helperAlive) {
             T("Sin conexión al sistema", 18.sp, FontWeight.Bold, t.v[0], maxLines = 1)
             Spacer(Modifier.width(16.dp))

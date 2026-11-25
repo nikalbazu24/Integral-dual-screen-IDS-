@@ -492,15 +492,12 @@ fun PersonalizarScreen() {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Title("Personalizar")
         Card {
-            T("Qué se muestra en Inicio", 20.sp, FontWeight.Black)
-            val w = listOf("now" to "Juego actual", "temp" to "Temperatura", "consola" to "Consola", "ct" to "ClusterTune", "stats" to "Estado",
-                "sliders" to "Brillo y volumen", "hw" to "Luces y ventilador", "quick" to "Accesos rápidos", "music" to "Música")
-            Grid(3, w.size, 10.dp) { i ->
-                val (k, name) = w[i]
-                val on = k in s.widgets
-                Pill((if (on) "●  " else "○  ") + name, on, Modifier.weight(1f), 72.dp) {
-                    Store.update { st -> st.copy(widgets = if (k in st.widgets) st.widgets - k else st.widgets + k) }
-                }
+            T("Tarjetas del Inicio", 20.sp, FontWeight.Black)
+            T("En Inicio toca “Editar inicio”: arrastra las tarjetas para moverlas, usa la esquina para cambiar su tamaño, ↻ para girarlas, − para quitarlas y “+ Agregar tarjeta” para poner otras.",
+                16.sp, FontWeight.Bold, t.mu, maxLines = 4)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Pill("Ir a editar el Inicio", true, Modifier.weight(1f), 60.dp) { Store.nav { it.copy(sec = "inicio") }; Store.editing.value = true }
+                Pill("Restablecer Inicio", false, Modifier.weight(1f), 60.dp) { Store.update { it.copy(layout = com.nikalbazu.ids.core.Grid.DEFAULT) }; Store.toast("Inicio restablecido") }
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {

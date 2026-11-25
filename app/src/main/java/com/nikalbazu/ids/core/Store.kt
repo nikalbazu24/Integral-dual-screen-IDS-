@@ -27,6 +27,8 @@ data class Settings(
     val size: String = "Normal",
     val techNumbers: Boolean = false,
     val widgets: Set<String> = setOf("temp", "consola", "ct", "stats", "sliders"),
+    /** Tarjetas del Inicio (posición y tamaño en la cuadrícula de 12 × 6). */
+    val layout: List<Tile> = Grid.DEFAULT,
     val mode: String = "Dos",
     val hz: String = "120 Hz",
     val perf: String = "Equilibrado",
@@ -142,6 +144,9 @@ object Store {
     val detectingStock = MutableStateFlow(false)
     /** Modo que eligió el ventilador inteligente ahora mismo ("" si no está en Inteligente). */
     val fanNow = MutableStateFlow("")
+    /** Modo edición del Inicio y bandeja para agregar tarjetas. */
+    val editing = MutableStateFlow(false)
+    val tray = MutableStateFlow(false)
 
     fun init(ctx: Context) {
         appContext = ctx.applicationContext
@@ -185,7 +190,7 @@ object Store {
     // ---- JSON ----
     private fun encode(s: Settings): JSONObject = JSONObject().apply {
         put("design", s.design); put("palette", s.palette); put("font", s.font); put("size", s.size)
-        put("techNumbers", s.techNumbers); put("widgets", JSONArray(s.widgets.toList()))
+        put("techNumbers", s.techNumbers); put("layout", JSONArray().also { a -> s.layout.forEach { t -> a.put(JSONObject().put("id", t.id).put("x", t.x).put("y", t.y).put("w", t.w).put("h", t.h)) } }); put("widgets", JSONArray(s.widgets.toList()))
         put("mode", s.mode); put("hz", s.hz); put("perf", s.perf); put("fan2", s.fan); put("brightLinked", s.brightLinked); put("ct", s.ct)
         put("caps", JSONObject(s.caps as Map<*, *>)); put("ctOwner2", s.ctOwner); put("autoTune", s.autoTune)
         put("automation", JSONArray(s.automation.toList())); put("toggles", JSONArray(s.toggles.toList()))
@@ -233,6 +238,9 @@ object Store {
             font = o.optString("font", d.font), size = o.optString("size", d.size),
             techNumbers = o.optBoolean("techNumbers", d.techNumbers),
             widgets = o.strings("widgets")?.toSet() ?: d.widgets,
+            layout = o.optJSONArray("layout")?.let { a -> (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { t ->
+                Tile(t.optString("id"), t.optInt("x"), t.optInt("y"), t.optInt("w", 1), t.optInt("h", 1)).takeIf { it.id in Grid.INFO && it.inside() } } } }
+                ?.takeIf { it.isNotEmpty() } ?: d.layout,
             mode = o.optString("mode", d.mode), hz = o.optString("hz", d.hz), perf = o.optString("perf", d.perf),
             fan = o.optString("fan2", d.fan), brightLinked = o.optBoolean("brightLinked", d.brightLinked), ct = o.optString("ct", d.ct), caps = caps,
             ctOwner = o.optString("ctOwner2", d.ctOwner), autoTune = o.optBoolean("autoTune", d.autoTune),
