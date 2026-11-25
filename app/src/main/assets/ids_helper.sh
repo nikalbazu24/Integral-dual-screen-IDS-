@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=13
+VERSION=14
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -23,8 +23,8 @@ num() { case "$1" in ''|*[!0-9]*) return 1;; esac; return 0; }
 # Panel de fábrica: se duerme mientras IDS lo reemplace (también si el sistema lo reinicia al abrir la consola)
 # Lista de paquetes del panel de fábrica: el conocido + los que la app detecte al presionar el botón AYN
 stock_list() { echo "$STOCK"; [ -f "$D/stock.list" ] && cat "$D/stock.list"; }
-stock_pids() { for k in $(stock_list | sort -u); do pgrep -f "$k" 2>/dev/null; done; }
-okpkg() { case "$1" in ''|*[!a-zA-Z0-9._]*|android|com.android.systemui|$PKG|com.odin.settings|com.odin.gameassistant|com.odin.mapping|com.odin.fota|com.odin.factorytest|com.odin.odinlauncher|com.odin.setupwizard|com.qualcomm.qti.performancemode) return 1;; esac; return 0; }
+stock_pids() { for k in $(stock_list | sort -u); do okpkg "$k" && pgrep -f "$k" 2>/dev/null; done; }
+okpkg() { case "$1" in ''|*[!a-zA-Z0-9._]*|android|com.android.systemui|$PKG|com.odin.settings|com.odin.gameassistant|com.odin.mapping|com.odin.fota|com.odin.factorytest|com.odin.odinlauncher|com.odin.setupwizard|com.qualcomm.qti.performancemode) return 1;; *launcher*|*home*|*systemui*|*inputmethod*|*keyboard*|*settings*|android*) return 1;; esac; return 0; }
 block() { touch "$D/block.on"; for k in $(stock_list | sort -u); do okpkg "$k" && pm disable-user --user 0 "$k" >/dev/null 2>&1; done; }
 unblock() { rm -f "$D/block.on"; for k in $(stock_list | sort -u); do okpkg "$k" && pm enable "$k" >/dev/null 2>&1; done; }
 # Quitar para siempre: igual que el bloqueo, pero NO se revierte si IDS se cierra. Anota el resultado de cada paquete.
@@ -371,7 +371,7 @@ hide_stock() {
     case "$l" in
       *mCurrentFocus=*)
         for k in $(stock_list | sort -u); do
-          case "$l" in *"$k"*) [ -n "$d" ] && input -d "$d" keyevent 4 >/dev/null 2>&1; break;; esac
+          case "$l" in *"$k"*) okpkg "$k" && [ -n "$d" ] && input -d "$d" keyevent 4 >/dev/null 2>&1; break;; esac
         done;;
     esac
   done

@@ -69,7 +69,7 @@ class PanelService : Service() {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON)
         })
         // Limpia la lista: antes se colaban apps de sistema de AYN (por eso se cortaban las luces)
-        Store.update { it.copy(stockPackages = it.stockPackages.filter { p -> p !in com.nikalbazu.ids.core.PROTECTED }) }
+        Store.update { it.copy(stockPackages = it.stockPackages.filter { p -> com.nikalbazu.ids.core.safeStock(p) }) }
         Helper.send("stockclear")
         Store.settings.value.stockPackages.forEach { Helper.send("stockadd $it") }
         if (Store.needsThaw) { Store.needsThaw = false; Helper.send("thaw", "restoreall"); Store.update { it } }
@@ -178,7 +178,7 @@ class PanelService : Service() {
             val found = after.filter { (d, pkg) ->
                 d != "proc" && pkg !in skip && d != "0" && ((d to pkg) !in before || keywords.containsMatchIn(pkg))
             }.map { it.second }
-            val fresh = found.distinct().filter { it !in Store.settings.value.stockPackages && Regex("^[a-zA-Z0-9._]+$").matches(it) }
+            val fresh = found.distinct().filter { com.nikalbazu.ids.core.safeStock(it) && it !in Store.settings.value.stockPackages && Regex("^[a-zA-Z0-9._]+$").matches(it) }
             if (fresh.isNotEmpty()) {
                 Store.update { it.copy(stockPackages = (it.stockPackages + fresh).distinct()) }
                 fresh.forEach { Helper.send("stockadd $it") }

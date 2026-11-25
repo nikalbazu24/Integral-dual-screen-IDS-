@@ -133,6 +133,13 @@ object Freq {
 val PROTECTED = setOf("com.odin.settings", "com.odin.gameassistant", "com.odin.mapping", "com.odin.fota", "com.odin.factorytest",
     "com.odin.odinlauncher", "com.odin.setupwizard", "com.qualcomm.qti.performancemode")
 
+/** Solo se toca el panel de fábrica: nunca lanzadores, teclados ni apps del sistema. Si esto falla, el inicio de Android se rompe. */
+fun safeStock(p: String): Boolean {
+    val l = p.lowercase()
+    if (p in PROTECTED) return false
+    return listOf("launcher", "home", "systemui", "inputmethod", "keyboard", "settings", "android").none { l.contains(it) }
+}
+
 /** Nombres antiguos de botones de AYN → nombres que usa AYN. */
 val RENAMED = mapOf("Bloqueo automático" to "Auto lock", "Alimentación directa" to "Direct power supply")
 
