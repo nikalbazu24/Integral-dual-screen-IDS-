@@ -138,12 +138,19 @@ private fun Setup() {
                                 Helper.send("blockperm")
                                 scope.launch { delay(2500); res = Helper.readBlock() }
                             }
-                            if (s.permStock) Pill("Devolver el panel", false, Modifier.weight(1f), 58.dp) {
+                            Pill("Devolver el panel de AYN", false, Modifier.weight(1f), 58.dp) {
                                 Store.update { it.copy(permStock = false, blockStock = false) }
-                                Helper.send("unblockperm")
+                                Helper.send("restoreall")
                                 res = emptyList()
+                                scope.launch {
+                                    delay(2500)
+                                    val r = Helper.readRestore()
+                                    Store.toast(if (r.isNullOrBlank()) "No había nada desactivado" else "Panel de AYN devuelto")
+                                }
                             }
                         }
+                        val restored = remember(tick) { Helper.readRestore() }
+                        if (!restored.isNullOrBlank()) T("Reactivado: " + restored.lines().joinToString(), 15.sp, FontWeight.Bold, t.v[1], maxLines = 3)
                         if (res.isNotEmpty()) T(res.joinToString("\n") { (pkg, r) ->
                             when (r) { "ok" -> "✓ $pkg desactivado"; "fallo" -> "✗ $pkg no se dejó desactivar"; else -> "· $pkg no existe en esta consola" }
                         }, 15.sp, FontWeight.Bold, if (res.any { it.second == "ok" }) t.v[1] else t.v[0], maxLines = 6)

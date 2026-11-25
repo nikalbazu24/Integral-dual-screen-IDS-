@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=8
+VERSION=9
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -234,6 +234,14 @@ run() {
       [ "$b" -gt 100 ] && b=100
       m=$(cat "/sys/class/backlight/$a/max_brightness" 2>/dev/null); num "$m" || m=255
       echo $(( b * m / 100 )) > "/sys/class/backlight/$a/brightness";;
+    restoreall)
+      rm -f "$D/perm.on" "$D/block.on" "$D/block.txt"
+      : > "$D/restore.tmp"
+      for k in $( (stock_list; pm list packages -d 2>/dev/null | sed 's/package://' | grep -iE "odin|ayn|thor|dual") | sort -u); do
+        okpkg "$k" || continue
+        pm enable "$k" >/dev/null 2>&1 && echo "$k" >> "$D/restore.tmp"
+      done
+      mv "$D/restore.tmp" "$D/restore.txt"; own "$D/restore.txt";;
     tempunblock) for k in $(stock_list | sort -u); do okpkg "$k" && pm enable "$k" >/dev/null 2>&1; done;;
     audit) rm -f "$D/audit.ok"; audit </dev/null >/dev/null 2>&1 &;;
     cap)
