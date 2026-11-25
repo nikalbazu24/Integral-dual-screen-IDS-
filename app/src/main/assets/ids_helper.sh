@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=14
+VERSION=15
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -136,13 +136,14 @@ diag() {
 }
 
 soc_temp() {
-  best=0
+  sum=0; n=0
   for f in $ZONES; do
     v=$(cat "$f" 2>/dev/null)
     num "$v" || continue
-    [ "$v" -gt "$best" ] && [ "$v" -lt 150000 ] && best=$v
+    [ "$v" -gt 0 ] && [ "$v" -lt 150000 ] || continue
+    sum=$((sum + v)); n=$((n + 1))
   done
-  echo $best
+  [ "$n" -gt 0 ] && echo $((sum / n)) || echo 0
 }
 
 telemetry() {
