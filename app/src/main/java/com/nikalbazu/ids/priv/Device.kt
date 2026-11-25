@@ -181,7 +181,7 @@ object Device {
     val states = kotlinx.coroutines.flow.MutableStateFlow<Map<String, Boolean>>(emptyMap())
     private val pending = java.util.concurrent.ConcurrentHashMap<String, Pair<Boolean, Long>>()
     private val stateIo = java.util.concurrent.Executors.newSingleThreadExecutor { r -> Thread(r, "ids-states").apply { isDaemon = true } }
-    private val WATCH = listOf("Wi‑Fi", "Bluetooth", "No molestar", "Carga 80 %", "Ratón virtual", "Gatillos L2/R2") + AYN_DIRECT.keys
+    private val WATCH by lazy { listOf("Wi‑Fi", "Bluetooth", "No molestar", "Carga 80 %", "Ratón virtual", "Gatillos L2/R2") + AYN_DIRECT.keys }
 
     fun refreshStates() = stateIo.execute {
         val now = System.currentTimeMillis()

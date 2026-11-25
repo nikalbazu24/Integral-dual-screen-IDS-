@@ -238,7 +238,7 @@ class PanelService : Service() {
             val fanName = mapOf("0" to "Apagado", "1" to "Silencio", "4" to "Auto", "5" to "Máx", "6" to "Personalizado")[ayn["fan_mode"]]
             val perfName = mapOf("0" to "Ahorro", "1" to "Equilibrado", "2" to "Rendimiento")[ayn["performance_mode"]]
             val cur = Store.settings.value
-            if (System.currentTimeMillis() - Device.lastSet > 3000 && (fanName != null && cur.fan != "Inteligente" && fanName != cur.fan) || (perfName != null && perfName != cur.perf)))
+            if (System.currentTimeMillis() - Device.lastSet > 3000 && ((fanName != null && cur.fan != "Inteligente" && fanName != cur.fan) || (perfName != null && perfName != cur.perf)))
                 Store.update { it.copy(fan = if (it.fan == "Inteligente" || fanName == null) it.fan else fanName, perf = perfName ?: it.perf) }
         }
         // Ahorro automático al 20 %
