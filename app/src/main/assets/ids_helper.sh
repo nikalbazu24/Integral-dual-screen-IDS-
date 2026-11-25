@@ -8,7 +8,7 @@ D=/data/media/0/Android/data/com.nikalbazu.ids/files/h
 U="$1"
 PKG=com.nikalbazu.ids
 STOCK=com.odin.dualscreen.assistant
-VERSION=10
+VERSION=11
 
 [ -d "$D" ] || exit 1
 if [ -f "$D/helper.pid" ]; then
@@ -113,7 +113,7 @@ lights_set() { # encendido colorIzq colorDer brillo%
   if [ "$1" = 0 ]; then settings put system joystick_light_enabled "0,0"; return; fi
   settings put system joystick_led_light_picker_color "#ff$2,#ff$3"
   settings put system led_light_brightness_percent "$(awk "BEGIN{printf \"%.2f\", $4/100}")"
-  settings put system joystick_light_enabled "1,1"
+  [ "$(settings get system joystick_light_enabled)" = "1,1" ] || settings put system joystick_light_enabled "1,1"
 }
 
 FXP=""
@@ -166,8 +166,11 @@ telemetry() {
     done
     echo "leds=$(ls /sys/class/leds 2>/dev/null | tr '\n' ',')"
     echo "stock=$(pidof $STOCK)"
-    for k in fan_mode performance_mode is_charging_separation force_landscape screen_focus_lock enable_system_key_focus_lock joystick_light_enabled joystick_led_light_picker_color led_light_brightness_percent dual_screen_brightness_level keep_screen_on; do
-      echo "ayn_$k=$(settings get system $k 2>/dev/null)"
+    CT=/data/data/com.aure.clustertune/files/datastore
+    for f in android_tuner_settings android_tuner; do
+      if [ -f "$CT/$f.preferences_pb" ] && [ "$CT/$f.preferences_pb" -nt "$D/ct_$f.pb" ]; then
+        cp "$CT/$f.preferences_pb" "$D/ct_$f.pb" && own "$D/ct_$f.pb"
+      fi
     done
   } > "$D/tele.tmp"
   mv "$D/tele.tmp" "$D/tele.txt"
@@ -291,17 +294,30 @@ run() {
       num "$a" && num "$d" || return
       fx_stop; lights_set "$a" "$b" "$c" "$d";;
     fxb)
-      num "$b" || return
+      # Respirar: solo cambia la intensidad del color (no apaga ni toca el brillo general)
       case "$a" in *[!0-9A-Fa-f]*|'') return;; esac
-      fx_stop
-      ( while true; do for k in 15 35 60 85 100 85 60 35; do lights_set 1 "$a" "$a" $(( k * b / 100 )); sleep 0.25; done; done ) &
+      fx_stop; lights_set 1 "$a" "$a" "$b"
+      r=$((16#${a%????})); g=$((16#$(echo $a | cut -c3-4))); bl=$((16#${a#????}))
+      ( while true; do for k in 100 85 68 52 38 28 38 52 68 85; do
+          settings put system joystick_led_light_picker_color "$(printf '#ff%02X%02X%02X,#ff%02X%02X%02X' $((r*k/100)) $((g*k/100)) $((bl*k/100)) $((r*k/100)) $((g*k/100)) $((bl*k/100)))"
+          sleep 0.3; done; done ) &
       FXP=$!;;
     fxr)
       num "$a" || return
-      fx_stop
+      fx_stop; lights_set 1 FF0000 FF0000 "$a"
       ( while true; do for col in FF0000 FF6E00 FFDC00 5AFF00 00FFA0 00A0FF 3C00FF C800FF FF008C; do
-          lights_set 1 $col $col "$a"; sleep 0.4; done; done ) &
+          settings put system joystick_led_light_picker_color "#ff$col,#ff$col"; sleep 0.5; done; done ) &
       FXP=$!;;
+    dbright)
+      # Brillo de la pantalla de abajo como lo hace AYN: DisplayManager.setBrightness(pantalla, 0..1)
+      num "$a" && num "$b" || return
+      case "$c" in ''|*[!0-9.]*) return;; esac
+      service call display "$a" i32 "$b" f "$c" >/dev/null 2>&1;;
+    ctopen)
+      case "$a" in
+        picker) am start -n com.aure.clustertune/.TileControlActivity -a com.aure.clustertune.action.SHOW_PROFILE_PICKER_OVERLAY -f 0x18000000 >/dev/null 2>&1;;
+        tuner) am start -n com.aure.clustertune/.TileControlActivity -a com.aure.clustertune.action.SHOW_COMPACT_TUNER_OVERLAY -f 0x18000000 >/dev/null 2>&1;;
+      esac;;
     fxoff) fx_stop;;
     diag) diag;;
     probe) case "$a" in 1|2) probe "$a";; esac;;

@@ -94,13 +94,38 @@ object Device {
     fun setTopBrightness(pct: Int) = Helper.send("bright ${(pct.coerceIn(1, 100) * 255) / 100}")
 
     /** Brillo de la pantalla de abajo en % real (la app lo escala al máximo que acepta esa pantalla). */
-    /** Brillo de la pantalla de abajo: el ajuste de AYN dual_screen_brightness_level (0-100). */
+    /** Brillo de la pantalla de abajo: igual que AYN, DisplayManager.setBrightness(pantalla de abajo, 0..1). */
     fun setBottomBrightness(pct: Int) {
-        Helper.send("ayn dual_screen_brightness_level ${pct.coerceIn(1, 100)}")
-        bottomSet = pct
+        val p = pct.coerceIn(1, 100)
+        bottomSet = p
+        val id = bottomDisplayId()
+        if (id >= 0 && setBrightnessCode > 0) Helper.send("dbright $setBrightnessCode $id ${String.format(java.util.Locale.US, "%.3f", p / 100f)}")
+        Helper.send("ayn dual_screen_brightness_level $p")
     }
     private var bottomSet = -1
-    val bottomPct: Int get() = if (bottomSet > 0) bottomSet else Store.tele.value.ayn["dual_screen_brightness_level"]?.toIntOrNull() ?: 50
+    val bottomPct: Int get() = if (bottomSet > 0) bottomSet else readBottomBrightness()
+        ?: com.nikalbazu.ids.core.Ayn.values.value["dual_screen_brightness_level"]?.toIntOrNull() ?: 50
+
+    /** Código interno de "setBrightness" en el servicio de pantallas (se lee una vez). */
+    private val setBrightnessCode: Int by lazy {
+        runCatching { Class.forName("android.hardware.display.IDisplayManager\$Stub").getDeclaredField("TRANSACTION_setBrightness").apply { isAccessible = true }.getInt(null) }
+            .getOrDefault(-1)
+    }
+
+    /** La pantalla de abajo es la que no es la principal. */
+    fun bottomDisplayId(): Int = runCatching {
+        ctx.getSystemService(android.hardware.display.DisplayManager::class.java).displays
+            .firstOrNull { it.displayId != android.view.Display.DEFAULT_DISPLAY }?.displayId ?: -1
+    }.getOrDefault(-1)
+
+    private fun readBottomBrightness(): Int? = runCatching {
+        val id = bottomDisplayId()
+        val d = ctx.getSystemService(android.hardware.display.DisplayManager::class.java).getDisplay(id) ?: return null
+        val info = d.javaClass.getMethod("getBrightnessInfo").invoke(d) ?: return null
+        val f = info.javaClass.getField("brightness").getFloat(info)
+        (f * 100).toInt().coerceIn(1, 100)
+    }.getOrNull()
+
     private fun bottomBacklight(): String? { val bl = Store.tele.value.backlights; return bl.getOrNull(1) ?: bl.firstOrNull() }
 
     fun volume(stream: Int = AudioManager.STREAM_MUSIC): Int = runCatching {
@@ -202,7 +227,7 @@ object Device {
     )
 
     fun isOn(name: String): Boolean = runCatching {
-        AYN_DIRECT[name]?.let { (k, on, _) -> return Store.tele.value.ayn[k]?.let { it == on || (k == "joystick_light_enabled" && it.contains('1')) } ?: false }
+        AYN_DIRECT[name]?.let { (k, on, _) -> return com.nikalbazu.ids.core.Ayn.values.value[k]?.let { it == on || (k == "joystick_light_enabled" && it.contains('1')) } ?: false }
         if (name in com.nikalbazu.ids.core.Community.all()) return learnedOn(name)
         when (name) {
             "Wi‑Fi" -> ctx.getSystemService(WifiManager::class.java).isWifiEnabled
@@ -261,12 +286,22 @@ object Device {
     fun applyCaps(name: String, custom: Map<String, Int>? = null) {
         val caps = custom ?: Freq.PROFILES[name] ?: return
         Store.update { it.copy(ct = name, caps = caps) }
-        if (Store.settings.value.ctOwner != "Esta app") return
+        if (ctLinked(Store.settings.value)) return
         if (name == "Stock") {
             Helper.send("capreset 0", "capreset 3", "capreset 7", "gpucap ${Freq.STOCK["gpu"]}")
         } else {
             Helper.send("cap 0 ${caps["s"]}", "cap 3 ${caps["g"]}", "cap 7 ${caps["p"]}", "gpucap ${caps["gpu"]}")
         }
+    }
+
+    /** ClusterTune manda si está instalado (salvo que el usuario elija "Esta app"). */
+    fun ctLinked(s: com.nikalbazu.ids.core.Settings): Boolean =
+        s.ctOwner == "ClusterTune" || (s.ctOwner == "Auto" && com.nikalbazu.ids.core.ClusterTune.state.value.installed)
+
+    /** Abre las ventanitas propias de ClusterTune (elegir perfil / ajuste rápido con Auto Tune). */
+    fun clusterTune(what: String) {
+        if (!com.nikalbazu.ids.core.ClusterTune.state.value.installed) { Store.toast("ClusterTune no está instalado"); return }
+        Helper.send("ctopen $what")
     }
 
     fun openClusterTune() = runCatching {
@@ -322,7 +357,7 @@ object Device {
 
     /** Lee lo que tiene AYN guardado (color, brillo, encendido) para que IDS parta igual que la consola. */
     fun syncLedsFromSystem() {
-        val a = Store.tele.value.ayn
+        val a = com.nikalbazu.ids.core.Ayn.values.value
         val cols = a["joystick_led_light_picker_color"]?.split(',')?.mapNotNull { c ->
             c.trim().removePrefix("#").takeLast(6).toLongOrNull(16)?.let { 0xFF000000 or it }
         } ?: return

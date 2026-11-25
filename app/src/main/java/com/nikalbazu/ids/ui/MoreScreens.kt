@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -57,13 +58,19 @@ fun ClusterTuneScreen() {
             }
             Spacer(Modifier.weight(1f))
             T("Controla", 16.sp, FontWeight.ExtraBold, t.mu)
-            SegRow(listOf("Esta app", "ClusterTune"), s.ctOwner, Modifier.width(320.dp), 46.dp, 16.sp) { o -> Store.update { it.copy(ctOwner = o) } }
+            val ctOn = Device.ctLinked(s)
+            SegRow(listOf("Esta app", "ClusterTune"), if (ctOn) "ClusterTune" else "Esta app", Modifier.width(320.dp), 46.dp, 16.sp) { o -> Store.update { it.copy(ctOwner = o) } }
         }
-        if (s.ctOwner == "ClusterTune") {
+        val cts by com.nikalbazu.ids.core.ClusterTune.state.collectAsState()
+        if (Device.ctLinked(s)) {
             Card(accent = 2) {
-                T("La app ClusterTune está a cargo de los topes de CPU y GPU.", 20.sp, FontWeight.Black)
-                T("Así las dos apps no pelean por lo mismo. Aquí solo se muestran los datos.", 16.sp, FontWeight.Bold, t.mu)
-                Pill("Abrir ClusterTune", true, height = 52.dp) { Device.openClusterTune() }
+                T("Conectado con ClusterTune · perfil: " + (cts.profile ?: "—") + " · Auto Tune " + (if (cts.autoTune) "activo" else "apagado"), 20.sp, FontWeight.Black, maxLines = 2)
+                T("IDS muestra lo mismo que ClusterTune y los botones abren sus propias ventanas, así nunca se contradicen.", 16.sp, FontWeight.Bold, t.mu, maxLines = 2)
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Pill("Elegir perfil", true, Modifier.weight(1f), 52.dp) { Device.clusterTune("picker") }
+                    Pill("Auto Tune y ajuste rápido", false, Modifier.weight(1f), 52.dp) { Device.clusterTune("tuner") }
+                    Pill("Abrir ClusterTune", false, Modifier.weight(1f), 52.dp) { Device.openClusterTune() }
+                }
             }
         }
         Tabs(listOf("perf" to "Perfiles", "games" to "Por juego", "auto" to "Auto Tune", "autom" to "Automatización", "log" to "Historial"), nav.ctTab) { id ->
@@ -121,7 +128,10 @@ fun ClusterTuneScreen() {
                 }
             }
             "auto" -> Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                ToggleCard("Auto Tune (experimental)", "Bajará los topes mientras el juego cumpla su meta de FPS. Nunca sube del perfil. La medición de FPS llega en la próxima versión.",
+                val ctA by com.nikalbazu.ids.core.ClusterTune.state.collectAsState()
+                if (Device.ctLinked(s)) ToggleCard("Auto Tune de ClusterTune", "Toca para cambiarlo en la ventana de ClusterTune. Aquí se ve siempre su estado real.",
+                    ctA.autoTune, height = 130.dp) { Device.clusterTune("tuner") }
+                else ToggleCard("Auto Tune (experimental)", "Instala ClusterTune para el Auto Tune real; esta versión propia aún no mide FPS.",
                     s.autoTune, height = 130.dp) { Store.update { it.copy(autoTune = !it.autoTune) } }
                 Card {
                     T("Meta de FPS por juego", 17.sp, FontWeight.ExtraBold, t.mu)
@@ -185,7 +195,7 @@ fun HardwareScreen() {
         when (nav.hwTab) {
             "led" -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Card(Modifier.weight(2f).height(440.dp)) {
+                    Card(Modifier.weight(2f).height(560.dp)) {
                         Spacer(Modifier.weight(1f))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                             listOf("l" to "Stick izquierdo", "r" to "Stick derecho").forEach { (k, name) ->
@@ -208,38 +218,57 @@ fun HardwareScreen() {
                     Column(Modifier.weight(3f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                         Card {
                             T("Color · " + if (s.ledSame) "los dos sticks" else if (nav.ledSide == "l") "stick izquierdo" else "stick derecho", 18.sp, FontWeight.ExtraBold, t.mu)
-                            val colors = listOf(0xFF7CC4F0, 0xFFF59AB0, 0xFFFF8A65, 0xFFFFC44D, 0xFFB6E35A, 0xFF5FD4BD,
-                                0xFF5B7CFF, 0xFFA77BFF, 0xFFFF4D4D, 0xFFFFFFFF, 0xFFFF9F1C, 0xFF3A3940)
-                            Grid(6, colors.size, 12.dp) { i ->
-                                val hex = colors[i]
-                                val cur = if (nav.ledSide == "l" || s.ledSame) s.ledL else s.ledR
-                                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-                                    Box(Modifier.size(62.dp).border(3.dp, if (hex == cur) t.sel else Color.Transparent, CircleShape).padding(6.dp)
-                                        .clip(CircleShape).background(Color(hex)).tap {
-                                            Store.update { st ->
-                                                if (st.ledSame) st.copy(ledL = hex, ledR = hex)
-                                                else if (nav.ledSide == "l") st.copy(ledL = hex) else st.copy(ledR = hex)
-                                            }
-                                            Device.applyLeds()
-                                        })
+                            val cur = if (nav.ledSide == "l" || s.ledSame) s.ledL else s.ledR
+                            var live by remember(cur) { mutableStateOf(Color(cur)) }
+                            var lastSent by remember { mutableStateOf(0L) }
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                                ColorWheel(live, Modifier.size(230.dp)) { c, final ->
+                                    live = c
+                                    val now = System.currentTimeMillis()
+                                    if (final || now - lastSent > 250) {
+                                        lastSent = now
+                                        val hex = 0xFF000000 or (c.toArgb().toLong() and 0xFFFFFF)
+                                        Store.update { st ->
+                                            val base = if (st.effect == "Apagadas") st.copy(effect = "Fijo") else st
+                                            if (base.ledSame) base.copy(ledL = hex, ledR = hex)
+                                            else if (nav.ledSide == "l") base.copy(ledL = hex) else base.copy(ledR = hex)
+                                        }
+                                        Device.applyLeds()
+                                    }
+                                }
+                                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    val quick = listOf(0xFFFF0000, 0xFFFF8000, 0xFFFFFF00, 0xFF00FF00, 0xFF00FFFF, 0xFF0000FF, 0xFF8000FF, 0xFFFF00FF, 0xFFFFFFFF)
+                                    Grid(3, quick.size, 10.dp) { i ->
+                                        val hex = quick[i]
+                                        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                                            Box(Modifier.size(52.dp).border(3.dp, if (hex == cur) t.sel else Color.Transparent, CircleShape).padding(5.dp)
+                                                .clip(CircleShape).background(Color(hex)).tap {
+                                                    Store.update { st ->
+                                                        val base = if (st.effect == "Apagadas") st.copy(effect = "Fijo") else st
+                                                        if (base.ledSame) base.copy(ledL = hex, ledR = hex)
+                                                        else if (nav.ledSide == "l") base.copy(ledL = hex) else base.copy(ledR = hex)
+                                                    }
+                                                    Device.applyLeds()
+                                                })
+                                        }
+                                    }
                                 }
                             }
+                            var ledB by remember(s.ledBright) { mutableIntStateOf(s.ledBright) }
+                            StepBar("Intensidad · $ledB %", ledB / 100f, live.copy(alpha = 0.55f), height = 60.dp,
+                                onMinus = {}, onPlus = {},
+                                onSlide = { f -> ledB = (f * 100).toInt().coerceIn(1, 100) },
+                                onRelease = { Store.update { it.copy(ledBright = ledB) }; Device.applyLeds() })
                         }
                         Card {
                             T("Efecto", 18.sp, FontWeight.ExtraBold, t.mu)
                             val fx = listOf("Fijo", "Respirar", "Arcoíris", "Según batería", "Según temperatura", "Apagadas")
                             Grid(3, fx.size, 8.dp) { i -> Pill(fx[i], s.effect == fx[i], Modifier.weight(1f), 52.dp, 15.sp) { Store.update { it.copy(effect = fx[i]) }; Device.applyLeds() } }
                         }
-                        var ledB by remember(s.ledBright) { mutableIntStateOf(s.ledBright) }
-                        StepBar("Brillo de las luces · $ledB", ledB / 100f, t.v[4].copy(alpha = 0.45f),
-                            onMinus = { Store.update { it.copy(ledBright = (it.ledBright - 10).coerceAtLeast(0)) }; Device.applyLeds() },
-                            onPlus = { Store.update { it.copy(ledBright = (it.ledBright + 10).coerceAtMost(100)) }; Device.applyLeds() },
-                            onSlide = { f -> ledB = (f * 100).toInt() },
-                            onRelease = { Store.update { it.copy(ledBright = ledB) }; Device.applyLeds() })
+
                     }
                 }
-                T("Luces del sistema detectadas: " + (tele.leds.joinToString().ifBlank { "ninguna todavía" }) +
-                    ". Si los sticks no cambian, revisa “Diagnóstico de luces” en la pantalla de arriba y mándame una captura.", 16.sp, FontWeight.Bold, t.mu, maxLines = 3)
+
             }
             "fan" -> {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {

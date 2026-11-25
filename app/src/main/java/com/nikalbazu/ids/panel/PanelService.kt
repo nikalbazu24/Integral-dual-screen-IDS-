@@ -63,6 +63,7 @@ class PanelService : Service() {
         startForeground(1, notification())
         host = OverlayHost(this)
         Helper.ensureRunning()
+        com.nikalbazu.ids.core.Ayn.start(this)
         Device.readVendorModes()
         registerReceiver(screenReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON)
@@ -99,6 +100,8 @@ class PanelService : Service() {
     fun bottomDisplayId(): Int = host?.displayId ?: -1
 
     private fun loops() {
+        // Cualquier cambio de AYN (barra, panel de AYN) se refleja al instante en los botones
+        scope.launch { com.nikalbazu.ids.core.Ayn.values.collect { Device.refreshStates() } }
         // Botón AYN (lo que anota el ayudante)
         scope.launch {
             while (isActive) {
@@ -225,14 +228,14 @@ class PanelService : Service() {
             fanRpm = i("fan"),
             ramUsedGb = (mi.totalMem - mi.availMem) / gb, ramTotalGb = mi.totalMem / gb,
             backlights = m["bl"].orEmpty().split(',').filter { it.isNotBlank() },
-            ayn = m.filterKeys { it.startsWith("ayn_") }.mapKeys { it.key.removePrefix("ayn_") },
             blPct = m.filterKeys { it.startsWith("blp_") }.mapNotNull { (k, v) -> v.toIntOrNull()?.let { k.removePrefix("blp_") to it } }.toMap(),
             leds = m["leds"].orEmpty().split(',').filter { it.isNotBlank() },
             helperAlive = Helper.alive(),
             maxTodayC = maxOf(prev.maxTodayC, soc ?: 0f),
         )
         // Lo que se cambie desde la barra de notificaciones o desde AYN también se ve en IDS
-        val ayn = Store.tele.value.ayn
+        com.nikalbazu.ids.core.ClusterTune.refresh(this, Helper.folder)
+        val ayn = com.nikalbazu.ids.core.Ayn.values.value
         if (ayn.isNotEmpty()) {
             if (!ledsSynced) { ledsSynced = true; Device.syncLedsFromSystem() }
             val fanName = mapOf("0" to "Apagado", "1" to "Silencio", "4" to "Auto", "5" to "Máx", "6" to "Personalizado")[ayn["fan_mode"]]

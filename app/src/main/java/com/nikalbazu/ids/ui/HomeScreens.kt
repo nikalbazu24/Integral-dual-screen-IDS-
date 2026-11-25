@@ -274,34 +274,40 @@ private fun CtCard(modifier: Modifier) {
     val p = tele.cpuMax["7"] ?: wantP
     val g = tele.gpuMaxHz?.toInt()?.takeIf { it > 0 } ?: wantG
     val applied = tele.cpuMax["7"] == null || kotlin.math.abs(p - wantP) < 120_000
-    val own = s.ctOwner == "Esta app"
+    val cts by com.nikalbazu.ids.core.ClusterTune.state.collectAsState()
+    val linked = Device.ctLinked(s)
+    val own = !linked
     Column(modifier.card(t, 3, 36.dp).padding(horizontal = 24.dp, vertical = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.weight(1f).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(40.dp, Alignment.CenterHorizontally)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 T("ClusterTune · perfil activo", 16.sp, FontWeight.ExtraBold, t.mu, maxLines = 1)
-                T(s.ct, 34.sp, FontWeight.Black, maxLines = 1)
+                T(if (linked) cts.profile ?: "ClusterTune" else s.ct, 34.sp, FontWeight.Black, maxLines = 1)
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(listOf("Stock", "Batería"), listOf("Silencioso", "Equilibrado")).forEach { pair ->
+                if (linked) {
+                    Pill("Elegir perfil", true, Modifier.width(288.dp), 42.dp, 16.sp) { Device.clusterTune("picker") }
+                    Pill("Auto Tune · ajuste rápido", false, Modifier.width(288.dp), 42.dp, 16.sp) { Device.clusterTune("tuner") }
+                } else listOf(listOf("Stock", "Batería"), listOf("Silencioso", "Equilibrado")).forEach { pair ->
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         pair.forEach { n -> Pill(n, s.ct == n, Modifier.width(140.dp), 42.dp, 16.sp) { Device.applyCaps(n) } }
                     }
                 }
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Pill("Más ajustes ›", true, Modifier.width(200.dp), 42.dp, 15.sp) { Store.nav { it.copy(sec = "ct") } }
+                Pill("Más ajustes ›", true, Modifier.width(200.dp), 42.dp, 15.sp) { if (linked) Device.openClusterTune() else Store.nav { it.copy(sec = "ct") } }
                 Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
                     Ring(ghz(p), "GHz · CPU", p / 3187200f, t.v[3], 100.dp, 11.dp, 22.sp, 11.sp)
                     Ring("${g / 1_000_000}", "MHz · GPU", g / 680_000_000f, t.v[2], 100.dp, 11.dp, 22.sp, 11.sp)
                 }
             }
         }
-        Row(Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(19.dp)).background(t.track),
+        Row(Modifier.fillMaxWidth().height(38.dp).clip(RoundedCornerShape(19.dp)).background(t.track).tap { if (linked) Device.clusterTune("tuner") },
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-            T("●  ", 15.sp, FontWeight.Black, if (own && s.autoTune) t.v[1] else t.mu)
-            T(if (!applied) "Aviso · la consola tiene otro tope (lo cambió AYN o la app ClusterTune)" else "Auto Tune · " + when {
-                !own -> "lo controla la app ClusterTune"
+            val atOn = if (linked) cts.autoTune else s.autoTune
+            T("●  ", 15.sp, FontWeight.Black, if (atOn) t.v[1] else t.mu)
+            T(if (!applied && own) "Aviso · la consola tiene otro tope (lo cambió AYN o la app ClusterTune)" else "Auto Tune · " + when {
+                linked -> if (cts.autoTune) "activo en ClusterTune" else "apagado en ClusterTune"
                 s.autoTune -> "activo, ajusta los topes según el juego"
                 else -> "apagado"
             }, 15.sp, FontWeight.ExtraBold, maxLines = 1)

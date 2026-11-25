@@ -35,7 +35,7 @@ data class Settings(
     /** Brillo: mover las dos pantallas juntas con la barra general. */
     val brightLinked: Boolean = true,
     val caps: Map<String, Int> = Freq.STOCK,
-    val ctOwner: String = "Esta app",
+    val ctOwner: String = "Auto",
     val autoTune: Boolean = false,
     val automation: Set<String> = setOf("boot", "minf"),
     val toggles: Set<String> = emptySet(),
@@ -100,8 +100,6 @@ data class Tele(
     val backlights: List<String> = emptyList(),
     /** Brillo real de cada pantalla en % (leído del sistema). */
     val blPct: Map<String, Int> = emptyMap(),
-    /** Ajustes de AYN tal como están ahora en la consola. */
-    val ayn: Map<String, String> = emptyMap(),
     val leds: List<String> = emptyList(),
     val helperAlive: Boolean = false,
     val maxTodayC: Float = 0f,
@@ -189,7 +187,7 @@ object Store {
         put("design", s.design); put("palette", s.palette); put("font", s.font); put("size", s.size)
         put("techNumbers", s.techNumbers); put("widgets", JSONArray(s.widgets.toList()))
         put("mode", s.mode); put("hz", s.hz); put("perf", s.perf); put("fan2", s.fan); put("brightLinked", s.brightLinked); put("ct", s.ct)
-        put("caps", JSONObject(s.caps as Map<*, *>)); put("ctOwner", s.ctOwner); put("autoTune", s.autoTune)
+        put("caps", JSONObject(s.caps as Map<*, *>)); put("ctOwner2", s.ctOwner); put("autoTune", s.autoTune)
         put("automation", JSONArray(s.automation.toList())); put("toggles", JSONArray(s.toggles.toList()))
         put("ledL", s.ledL); put("ledR", s.ledR); put("ledSame", s.ledSame); put("effect", s.effect)
         put("ledBright", s.ledBright); put("curve", JSONArray(s.curve)); put("trig", s.trig); put("vib", s.vib)
@@ -237,7 +235,7 @@ object Store {
             widgets = o.strings("widgets")?.toSet() ?: d.widgets,
             mode = o.optString("mode", d.mode), hz = o.optString("hz", d.hz), perf = o.optString("perf", d.perf),
             fan = o.optString("fan2", d.fan), brightLinked = o.optBoolean("brightLinked", d.brightLinked), ct = o.optString("ct", d.ct), caps = caps,
-            ctOwner = o.optString("ctOwner", d.ctOwner), autoTune = o.optBoolean("autoTune", d.autoTune),
+            ctOwner = o.optString("ctOwner2", d.ctOwner), autoTune = o.optBoolean("autoTune", d.autoTune),
             automation = o.strings("automation")?.toSet() ?: d.automation,
             toggles = o.strings("toggles")?.toSet() ?: d.toggles,
             ledL = o.optLong("ledL", d.ledL), ledR = o.optLong("ledR", d.ledR), ledSame = o.optBoolean("ledSame", d.ledSame),

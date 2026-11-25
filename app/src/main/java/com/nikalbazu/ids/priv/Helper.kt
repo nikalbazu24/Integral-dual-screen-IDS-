@@ -13,10 +13,11 @@ import java.util.concurrent.Executors
  */
 object Helper {
     private lateinit var dir: File
+    val folder: File get() = dir
     private lateinit var ctx: Context
     private var lastLaunch = 0L
     var method: String = "ninguno"; private set
-    private const val VERSION = "10"
+    private const val VERSION = "11"
     /** Todo lo que toca archivos va en segundo plano para que el panel nunca se trabe. */
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "ids-helper").apply { isDaemon = true } }
 

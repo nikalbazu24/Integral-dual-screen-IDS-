@@ -26,6 +26,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.ui.input.pointer.pointerInput
@@ -82,8 +84,7 @@ fun Modifier.card(t: Tok, accent: Int? = null, radius: Dp = 32.dp): Modifier {
         this.shadow(10.dp, shape, ambientColor = Color(0x332B2A33), spotColor = Color(0x332B2A33))
             .background(if (accent != null) t.tile[accent % t.tile.size] else t.surf, shape)
     } else {
-        this.shadow(10.dp, shape, ambientColor = (ac ?: Color.Black).copy(alpha = 0.55f), spotColor = ac ?: Color.Black)
-            .background(t.surf, shape)
+        this.background(t.surf, shape)
             .then(if (accent != null) Modifier.background(t.tile[accent % t.tile.size], shape) else Modifier)
             .border(1.5.dp, ac?.copy(alpha = 0.75f) ?: t.line, shape)
             .border(1.dp, Brush.verticalGradient(0f to Color.White.copy(alpha = 0.16f), 0.12f to Color.Transparent), shape)
@@ -120,7 +121,7 @@ fun Pill(
     val t = LocalTok.current
     val shape = RoundedCornerShape(height / 2)
     val base = if (selected) {
-        modifier.shadow(if (t.light) 8.dp else 12.dp, shape, ambientColor = t.sel.copy(alpha = 0.4f), spotColor = t.sel.copy(alpha = 0.5f))
+        (if (t.light) modifier.shadow(6.dp, shape, ambientColor = t.sel.copy(alpha = 0.4f), spotColor = t.sel.copy(alpha = 0.5f)) else modifier)
             .background(t.sel, shape)
     } else {
         modifier.background(t.track, shape).border(1.dp, if (t.light) Color(0x142B2A33) else Color.White.copy(alpha = 0.07f), shape)
@@ -216,7 +217,6 @@ fun StepBar(
     val slide by rememberUpdatedState(onSlide)
     val release by rememberUpdatedState(onRelease)
     Row(modifier, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Pill("−", false, Modifier.width(54.dp), height, 26.sp, onMinus)
         Box(
             Modifier.weight(1f).height(height).clip(RoundedCornerShape(height / 2)).background(t.track)
                 .pointerInput(Unit) {
@@ -239,7 +239,6 @@ fun StepBar(
             Box(Modifier.fillMaxHeight().fillMaxWidth(fraction.coerceIn(0f, 1f)).clip(RoundedCornerShape(height / 2)).background(fill))
             T(text, 17.sp, FontWeight.Black, modifier = Modifier.padding(start = 18.dp), maxLines = 1)
         }
-        Pill("+", false, Modifier.width(54.dp), height, 26.sp, onPlus)
     }
 }
 
@@ -313,5 +312,46 @@ fun Tabs(options: List<Pair<String, String>>, selected: String, onPick: (String)
                 contentAlignment = Alignment.Center,
             ) { T(label, 18.sp, FontWeight.ExtraBold, if (on) t.selTx else t.mu, maxLines = 1) }
         }
+    }
+}
+
+
+/** Rueda de colores como la de AYN: tocas o arrastras para elegir el tono y la saturación. */
+@Composable
+fun ColorWheel(color: Color, modifier: Modifier = Modifier, onPick: (Color, Boolean) -> Unit) {
+    val pick by rememberUpdatedState(onPick)
+    val hsv = FloatArray(3).also { android.graphics.Color.colorToHSV(android.graphics.Color.rgb((color.red * 255).toInt(), (color.green * 255).toInt(), (color.blue * 255).toInt()), it) }
+    fun at(pos: Offset, w: Float, h: Float, final: Boolean) {
+        val cx = w / 2; val cy = h / 2; val r = minOf(w, h) / 2
+        val dx = pos.x - cx; val dy = pos.y - cy
+        val dist = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtMost(r)
+        val hue = ((Math.toDegrees(kotlin.math.atan2(dy, dx).toDouble()) + 360) % 360).toFloat()
+        pick(Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, dist / r, 1f))), final)
+    }
+    Canvas(
+        modifier.pointerInput(Unit) {
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                val w = size.width.toFloat(); val h = size.height.toFloat()
+                at(down.position, w, h, false)
+                var last = down.position
+                while (true) {
+                    val e = awaitPointerEvent()
+                    val c = e.changes.firstOrNull() ?: break
+                    if (!c.pressed) break
+                    last = c.position; c.consume(); at(last, w, h, false)
+                }
+                at(last, w, h, true)
+            }
+        },
+    ) {
+        val r = size.minDimension / 2
+        val hues = (0..360 step 30).map { Color(android.graphics.Color.HSVToColor(floatArrayOf(it.toFloat(), 1f, 1f))) }
+        drawCircle(Brush.sweepGradient(hues), r)
+        drawCircle(Brush.radialGradient(listOf(Color.White, Color.White.copy(alpha = 0f)), radius = r), r)
+        val a = Math.toRadians(hsv[0].toDouble()); val d = hsv[1] * r
+        val p = Offset(center.x + (kotlin.math.cos(a) * d).toFloat(), center.y + (kotlin.math.sin(a) * d).toFloat())
+        drawCircle(Color.White, 18.dp.toPx(), p)
+        drawCircle(color.copy(alpha = 1f), 13.dp.toPx(), p)
     }
 }
