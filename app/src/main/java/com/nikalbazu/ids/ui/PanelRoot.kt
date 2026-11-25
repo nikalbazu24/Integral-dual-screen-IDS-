@@ -129,6 +129,9 @@ private fun StatusBar(inicio: Boolean) {
                     Box(Modifier.fillMaxHeight().fillMaxWidth(tele.batteryPct / 100f).background(if (tele.batteryPct <= 20) t.v[0] else t.v[1]))
                 }
             }
+            androidx.compose.animation.AnimatedVisibility(tele.charging, enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()) {
+                Icon(Ico.BOLT, t.v[1], 26.dp, 2.6f)
+            }
             T("${tele.batteryPct} %", 24.sp, FontWeight.Black, num = true, maxLines = 1)
             val extra = when {
                 tele.charging -> "cargando"
