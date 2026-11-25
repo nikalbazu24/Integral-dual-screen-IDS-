@@ -1,0 +1,69 @@
+name: Botones de AYN compartidos
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: write
+  issues: write
+  actions: write
+
+jobs:
+  merge:
+    if: startsWith(github.event.issue.title, 'Botones de AYN')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Se agrega solo si lo compartió el dueño del repositorio, o si el dueño le pone la etiqueta "aprobado".
+      - name: Revisar permiso
+        id: perm
+        env:
+          AUTHOR: ${{ github.event.issue.user.login }}
+          SENDER: ${{ github.event.sender.login }}
+          OWNER: ${{ github.repository_owner }}
+          LABEL: ${{ github.event.label.name }}
+          ACTION: ${{ github.event.action }}
+        run: |
+          ok=false
+          [ "$AUTHOR" = "$OWNER" ] && [ "$ACTION" != "labeled" ] && ok=true
+          [ "$ACTION" = "labeled" ] && [ "$LABEL" = "aprobado" ] && [ "$SENDER" = "$OWNER" ] && ok=true
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+
+      - name: Agregar a la app
+        id: merge
+        if: steps.perm.outputs.ok == 'true'
+        env:
+          BODY: ${{ github.event.issue.body }}
+        run: python3 tools/merge_ayn_buttons.py
+
+      - name: Guardar y compilar nueva versión
+        if: steps.merge.outputs.result == 'agregado'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAMES: ${{ steps.merge.outputs.names }}
+        run: |
+          git config user.name "IDS bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/assets/ayn_buttons.json
+          git commit -m "Botones de AYN de la comunidad: $NAMES"
+          git push
+          gh workflow run build.yml --ref main
+
+      - name: Responder
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OK: ${{ steps.perm.outputs.ok }}
+          RESULT: ${{ steps.merge.outputs.result }}
+          NUM: ${{ github.event.issue.number }}
+        run: |
+          if [ "$OK" != "true" ]; then
+            msg="¡Gracias! Quedó para revisión. Cuando se apruebe, se agrega a la app para todos."
+          elif [ "$RESULT" = "agregado" ]; then
+            msg="¡Listo! Se agregó a la app y se está compilando una versión nueva. Los que ya tienen IDS lo reciben solo al abrirla."
+          else
+            msg="No se encontró nada nuevo para agregar ($RESULT)."
+          fi
+          gh issue comment "$NUM" --repo "$GITHUB_REPOSITORY" --body "$msg"
+          [ "$RESULT" = "agregado" ] && gh issue close "$NUM" --repo "$GITHUB_REPOSITORY" || true

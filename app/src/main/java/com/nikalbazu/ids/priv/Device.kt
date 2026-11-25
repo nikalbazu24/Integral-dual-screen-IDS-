@@ -105,12 +105,12 @@ object Device {
     }.getOrNull()
 
     fun learnedOn(name: String): Boolean {
-        val l = Store.settings.value.learned[name] ?: return false
+        val l = com.nikalbazu.ids.core.Community.all()[name] ?: return false
         return l.on.isNotEmpty() && l.on.all { (k, v) -> readSetting(k) == v }
     }
 
     private fun applyLearned(name: String, turnOn: Boolean) {
-        val l = Store.settings.value.learned[name] ?: return
+        val l = com.nikalbazu.ids.core.Community.all()[name] ?: return
         val target = if (turnOn) l.on else l.off
         Helper.send(*target.map { (k, v) -> "put ${k.substringBefore(':')} ${k.substringAfter(':')} $v" }.toTypedArray())
     }
@@ -132,7 +132,7 @@ object Device {
 
     // ---- Accesos rápidos ----
     fun isOn(name: String): Boolean = runCatching {
-        if (name in Store.settings.value.learned) return learnedOn(name)
+        if (name in com.nikalbazu.ids.core.Community.all()) return learnedOn(name)
         when (name) {
             "Wi‑Fi" -> ctx.getSystemService(WifiManager::class.java).isWifiEnabled
             "Bluetooth" -> ctx.getSystemService(BluetoothManager::class.java).adapter?.isEnabled == true
@@ -143,7 +143,7 @@ object Device {
 
     fun toggle(name: String) {
         val on = !isOn(name)
-        if (name in Store.settings.value.learned) { applyLearned(name, on); return }
+        if (name in com.nikalbazu.ids.core.Community.all()) { applyLearned(name, on); return }
         if (name in STOCK_BUTTONS) { Store.toast("Enséñale este botón: pantalla de arriba › Aprender botones de AYN"); return }
         when (name) {
             "Wi‑Fi" -> Helper.send("wifi " + if (on) "on" else "off")

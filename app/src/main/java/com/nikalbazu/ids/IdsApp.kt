@@ -1,6 +1,7 @@
 package com.nikalbazu.ids
 
 import android.app.Application
+import com.nikalbazu.ids.core.Community
 import com.nikalbazu.ids.core.ErrorReporter
 import com.nikalbazu.ids.core.Store
 import com.nikalbazu.ids.priv.Device
@@ -13,5 +14,6 @@ class IdsApp : Application() {
         Store.init(this)
         Helper.init(this)
         Device.init(this)
+        Community.init(this)
     }
 }

@@ -143,13 +143,24 @@ private fun Setup() {
                         }
                     }
                     if (toastText.isNotEmpty()) T(toastText, 17.sp, FontWeight.Black, t.v[1])
+                    if (s.learned.isNotEmpty()) Pill("Compartir lo aprendido con la comunidad", true, Modifier.fillMaxWidth(), 58.dp) {
+                        com.nikalbazu.ids.core.Community.shareUrl()?.let { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(it))) }
+                    }
+                    T("Al compartir se abre GitHub con todo rellenado: solo toca “Submit new issue”. Se revisa, se agrega a la app y le llega a todos en la siguiente versión.",
+                        15.sp, FontWeight.Bold, t.mu, maxLines = 3)
                     Device.STOCK_BUTTONS.forEach { name ->
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            val learned = s.learned[name]
+                            val community by com.nikalbazu.ids.core.Community.buttons.collectAsState()
+                            val mine = s.learned[name]
+                            val learned = mine ?: community[name]
                             T(if (learned != null) "●" else "○", 22.sp, FontWeight.Black, if (learned != null) t.v[1] else t.mu)
                             Column(Modifier.weight(1f)) {
                                 T(name, 19.sp, FontWeight.Black)
-                                T(learned?.on?.keys?.joinToString { it.substringAfter(':') } ?: "Sin aprender", 14.sp, FontWeight.Bold, t.mu, maxLines = 1)
+                                T(when {
+                                    mine != null -> "Aprendido aquí · " + mine.on.keys.joinToString { it.substringAfter(':') }
+                                    learned != null -> "Viene de la comunidad"
+                                    else -> "Sin aprender"
+                                }, 14.sp, FontWeight.Bold, t.mu, maxLines = 1)
                             }
                             Pill("Aprender", learningName == name, Modifier.width(170.dp), 48.dp, 16.sp) {
                                 // Despierta el panel de fábrica y toma la primera foto de los ajustes
@@ -157,7 +168,7 @@ private fun Setup() {
                                 Store.learningSetting.value = name
                                 toastText = ""
                             }
-                            if (learned != null) Pill("Olvidar", false, Modifier.width(150.dp), 48.dp, 16.sp) { Device.forget(name) }
+                            if (mine != null) Pill("Olvidar", false, Modifier.width(150.dp), 48.dp, 16.sp) { Device.forget(name) }
                         }
                     }
                 }
